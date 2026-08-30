@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+>
+    <testsuites>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Feature">
+            <directory>tests/Feature</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>app</directory>
+        </include>
+    </source>
+    <php>
+        <env name="APP_ENV" value="testing"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
+        <env name="BCRYPT_ROUNDS" value="4"/>
+        <env name="BROADCAST_CONNECTION" value="null"/>
+        <env name="CACHE_STORE" value="array"/>
+        <env name="DB_CONNECTION" value="sqlite"/>
+        <env name="DB_DATABASE" value=":memory:"/>
+        <env name="DB_URL" value=""/>
+        <env name="MAIL_MAILER" value="array"/>
+        <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="SESSION_DRIVER" value="array"/>
+        <env name="PULSE_ENABLED" value="false"/>
+        <env name="TELESCOPE_ENABLED" value="false"/>
+        <env name="NIGHTWATCH_ENABLED" value="false"/>
+
+        <!--
+            Slack, off, and the webhooks blanked behind it.
+
+            The suite writes audit lines constantly — every case it files, every
+            action it issues, every appeal it decides — and every audit line is
+            offered to SlackNotifier. Nothing here overrode `slack.enabled`, so it
+            was read from the developer's own .env, where it is on and the webhook
+            URLs are real ones. With QUEUE_CONNECTION=sync above, PostToSlack does
+            not queue: it posts, inline, during the test.
+
+            So running the suite posted hundreds of messages to the team's real
+            channels, about references like TS-2026-0001 that exist only in the
+            throwaway SQLite database each run builds. It looked like the portal
+            spamming Slack about records nobody could find, and it was somebody
+            running the tests.
+
+            Belt and braces: `enabled` false is what stops it, and blank webhooks
+            mean a test that switches `enabled` back on for its own purposes and
+            forgets to substitute its own URLs still has nowhere to post. See
+            SlackActivityTest, which sets both for itself and fakes the HTTP.
+        -->
+        <env name="SLACK_ACTIVITY_ENABLED" value="false"/>
+        <env name="SLACK_WEBHOOK_URL" value=""/>
+        <env name="SLACK_WEBHOOK_URGENT" value=""/>
+        <env name="SLACK_WEBHOOK_CASES" value=""/>
+        <env name="SLACK_WEBHOOK_ACTIONS" value=""/>
+        <env name="SLACK_WEBHOOK_DATA" value=""/>
+        <env name="SLACK_WEBHOOK_ADMIN" value=""/>
+
+        <!-- The suite exercises the wiki-facing API, which is signed. -->
+        <env name="MW_S2S_SECRET" value="test-shared-secret-for-the-suite"/>
+        <env name="MW_S2S_PUSH_ENABLED" value="false"/>
+        <env name="MW_SUPPORTED_ACTIONS" value="lock,unlock,warn,note"/>
+    </php>
+</phpunit>
