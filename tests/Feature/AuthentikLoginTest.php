@@ -89,7 +89,6 @@ class AuthentikLoginTest extends TestCase
         $this->fakeProvider([
             'sub' => 'ak-7f3c',
             'email' => '  Halcyon.Reed@Example.Test ',
-            'email_verified' => true,
             'preferred_username' => 'hreed',
             'name' => 'Halcyon Reed',
             'groups' => ['safety', 'everyone'],
@@ -116,7 +115,6 @@ class AuthentikLoginTest extends TestCase
         $this->fakeProvider([
             'sub' => 'ak-7f3c',
             'email' => 'halcyon.reed@example.test',
-            'email_verified' => true,
             'preferred_username' => 'hreed',
             'groups' => [],
         ]);
@@ -146,7 +144,6 @@ class AuthentikLoginTest extends TestCase
         $this->fakeProvider([
             'sub' => 'ak-7f3c',
             'email' => 'Halcyon.Reed@example.test',
-            'email_verified' => true,
             'preferred_username' => 'hreed',
             'groups' => ['safety'],
         ]);
@@ -193,7 +190,7 @@ class AuthentikLoginTest extends TestCase
     }
 
     #[Test]
-    public function a_sign_in_with_an_unverified_email_is_refused(): void
+    public function a_sign_in_with_an_unverified_email_is_allowed(): void
     {
         $this->fakeProvider([
             'sub' => 'ak-7f3c',
@@ -203,11 +200,14 @@ class AuthentikLoginTest extends TestCase
             'groups' => ['safety'],
         ]);
 
-        $this->returnFromProvider()->assertRedirect(route('login'));
+        $this->returnFromProvider()->assertRedirect('/');
 
-        $this->assertGuest();
-        $this->assertSame(0, User::query()->count());
-        $this->assertDatabaseHas('audit_logs', ['action' => 'auth.blocked']);
+        $user = User::query()->sole();
+
+        $this->assertSame('halcyon.reed@example.test', $user->email);
+        $this->assertAuthenticatedAs($user);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'auth.login']);
+        $this->assertDatabaseMissing('audit_logs', ['action' => 'auth.blocked']);
     }
 
     #[Test]
@@ -223,7 +223,6 @@ class AuthentikLoginTest extends TestCase
         $this->fakeProvider([
             'sub' => 'ak-7f3c',
             'email' => 'halcyon.reed@example.test',
-            'email_verified' => true,
             'preferred_username' => 'hreed',
             'groups' => ['safety'],
         ]);

@@ -82,7 +82,7 @@ final class OidcService
         return $token;
     }
 
-    /** @return array{sub: string, email: ?string, email_verified: bool, username: string, real_name: ?string, groups: list<string>} */
+    /** @return array{sub: string, email: ?string, username: string, real_name: ?string, groups: list<string>} */
     public function userinfo(string $accessToken): array
     {
         $response = $this->http()
@@ -106,7 +106,6 @@ final class OidcService
         return [
             'sub' => (string) $claims['sub'],
             'email' => $email !== '' ? $email : null,
-            'email_verified' => ($claims['email_verified'] ?? true) !== false,
             'username' => (string) ($claims['preferred_username'] ?? $claims['nickname'] ?? $email),
             'real_name' => ($claims['name'] ?? null) ?: null,
             'groups' => array_values(array_map('strval', (array) ($claims['groups'] ?? []))),

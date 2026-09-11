@@ -72,14 +72,6 @@ class AuthentikOidcController extends Controller
             ]);
         }
 
-        if (! $claims['email_verified']) {
-            Audit::log('auth.blocked', null, ['reason' => 'email address not verified', 'sub' => $claims['sub']]);
-
-            return redirect()->route('login')->withErrors([
-                'oidc' => 'That email address has not been verified. Verify it with the identity provider and try again.',
-            ]);
-        }
-
         $user = $this->upsert($claims);
 
         if (! $user->active) {
@@ -111,7 +103,7 @@ class AuthentikOidcController extends Controller
         return redirect()->route('login');
     }
 
-    /** @param  array{sub: string, email: string, email_verified: bool, username: string, real_name: ?string, groups: list<string>}  $claims */
+    /** @param  array{sub: string, email: string, username: string, real_name: ?string, groups: list<string>}  $claims */
     private function upsert(array $claims): User
     {
         $user = User::query()->firstOrNew(['email' => $claims['email']]);
