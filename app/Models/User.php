@@ -29,7 +29,7 @@ class User extends Authenticatable
         'email',
         'flags',
         'granted_flags',
-        'mw_groups',
+        'idp_groups',
         'active',
         'last_login_at',
     ];
@@ -47,7 +47,7 @@ class User extends Authenticatable
         return [
             'flags' => 'array',
             'granted_flags' => 'array',
-            'mw_groups' => 'array',
+            'idp_groups' => 'array',
             'active' => 'boolean',
             'last_login_at' => 'datetime',
         ];
@@ -79,17 +79,17 @@ class User extends Authenticatable
     public function syncGroupFlags(array $groups): void
     {
         $derived = [];
-        foreach (config('mediawiki.group_flags', []) as $group => $flags) {
+        foreach (config('authentik.group_flags', []) as $group => $flags) {
             if (in_array($group, $groups, true)) {
                 $derived = array_merge($derived, (array) $flags);
             }
         }
 
-        if (in_array($this->username, config('mediawiki.bootstrap_admins', []), true)) {
+        if (in_array($this->username, config('authentik.bootstrap_admins', []), true)) {
             $derived = self::FLAGS;
         }
 
-        $this->mw_groups = array_values($groups);
+        $this->idp_groups = array_values($groups);
         $this->flags = array_values(array_unique(array_merge(
             $derived,
             $this->granted_flags ?? [],

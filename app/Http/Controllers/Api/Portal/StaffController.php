@@ -23,7 +23,7 @@ class StaffController extends Controller
                 'flags' => $u->flags ?? [],
                 'granted_flags' => $u->granted_flags ?? [],
                 'from_groups' => array_values(array_diff($u->flags ?? [], $u->granted_flags ?? [])),
-                'mw_groups' => $u->mw_groups ?? [],
+                'idp_groups' => $u->idp_groups ?? [],
                 'active' => $u->active,
                 'last_login' => $u->last_login_at?->toIso8601String(),
                 'public_label' => $u->publicLabel(),
@@ -49,7 +49,7 @@ class StaffController extends Controller
 
         if (array_key_exists('granted_flags', $data)) {
             $user->granted_flags = array_values(array_unique($data['granted_flags'] ?? []));
-            $user->syncGroupFlags($user->mw_groups ?? []);
+            $user->syncGroupFlags($user->idp_groups ?? []);
         }
 
         if (array_key_exists('active', $data)) {

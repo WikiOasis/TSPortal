@@ -37,13 +37,13 @@
 						@update:model-value="( on ) => toggle( person, flag, on )"
 					>
 						{{ flag }}
-						<span v-if="fromGroups( person ).includes( flag )" class="ts-meta">(also from a wiki group)</span>
+						<span v-if="fromGroups( person ).includes( flag )" class="ts-meta">(also from an identity group)</span>
 					</cdx-checkbox>
 				</div>
 
 				<div class="ts-meta" style="margin-top: 0.5rem;">
 					In force: {{ person.flags.join( ', ' ) || 'nothing' }}
-					<template v-if="person.mw_groups.length"> · wiki groups: {{ person.mw_groups.join( ', ' ) }}</template>
+					<template v-if="person.idp_groups.length"> · identity groups: {{ person.idp_groups.join( ', ' ) }}</template>
 				</div>
 
 				<p v-if="person.id === session.user.id" class="ts-meta">
