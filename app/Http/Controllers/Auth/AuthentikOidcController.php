@@ -78,7 +78,7 @@ class AuthentikOidcController extends Controller
             Audit::log('auth.blocked', $user, ['reason' => 'account deactivated in portal']);
 
             return redirect()->route('login')->withErrors([
-                'oidc' => 'This account has been deactivated in the portal. Speak to a portal administrator.',
+                'oidc' => 'This account has been deactivated in the portal. Reach out on Slack.',
             ]);
         }
 
