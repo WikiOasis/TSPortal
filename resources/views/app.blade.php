@@ -17,7 +17,7 @@ use Illuminate\Support\Js;
 
     <script>
         window.TSPortal = {{ Js::from([
-            'loginUrl' => route('oauth.redirect'),
+            'loginUrl' => route('oidc.redirect'),
             'logoutUrl' => route('logout'),
             'centralUrl' => config('mediawiki.central_url'),
             'appName' => config('app.name', 'TSPortal'),

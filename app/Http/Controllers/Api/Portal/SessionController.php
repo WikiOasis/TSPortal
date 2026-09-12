@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\Portal;
 
 use App\Http\Controllers\Controller;
-use App\Services\MediaWiki\OAuthService;
+use App\Services\Authentik\OidcService;
 use App\Services\MediaWiki\WikiClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,7 +27,7 @@ class SessionController extends Controller
             'wiki' => [
                 'name' => config('app.name'),
                 'central_url' => config('mediawiki.central_url'),
-                'oauth_configured' => (new OAuthService)->configured(),
+                'oidc_configured' => (new OidcService)->configured(),
 
                 'supported_actions' => WikiClient::tasks(),
                 'push_enabled' => (bool) config('mediawiki.s2s.push_enabled'),

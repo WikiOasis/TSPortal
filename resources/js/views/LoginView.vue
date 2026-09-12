@@ -9,14 +9,14 @@
 						{{ error }}
 					</cdx-message>
 
-					<cdx-message v-if="!oauthConfigured" type="warning" :allow-user-dismiss="false">
-						No OAuth client is currently configured. Please contact an administrator for help.
+					<cdx-message v-if="!oidcConfigured" type="warning" :allow-user-dismiss="false">
+						No identity provider is currently configured. Please contact an administrator for help.
 					</cdx-message>
 
 					<cdx-button
 						action="progressive"
 						weight="primary"
-						:disabled="!oauthConfigured"
+						:disabled="!oidcConfigured"
 						@click="signIn"
 					>
 						Continue with WikiOasis
@@ -36,12 +36,12 @@ import SplashLayout from '../components/SplashLayout.vue';
 
 const route = useRoute();
 
-const oauthConfigured = computed( () => session.wiki?.oauth_configured !== false );
+const oidcConfigured = computed( () => session.wiki?.oidc_configured !== false );
 
 const error = ref( route.query.error ? String( route.query.error ) : '' );
 
 function signIn() {
-	const base = window.TSPortal?.loginUrl ?? '/auth/mediawiki/redirect';
+	const base = window.TSPortal?.loginUrl ?? '/auth/oidc/redirect';
 	const next = route.query.next;
 
 	const safe = typeof next === 'string' && next.startsWith( '/' ) && !next.startsWith( '//' )

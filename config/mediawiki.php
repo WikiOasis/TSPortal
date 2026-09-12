@@ -8,21 +8,6 @@ return [
     'rest_url' => rtrim((string) env('MW_REST_URL', env('MW_CENTRAL_URL', 'https://meta.wikioasis.org').'/w/rest.php'), '/'),
     'user_agent' => (string) env('MW_USER_AGENT', 'TSPortal/0.1.0 (https://ts.wikioasis.org; trustandsafety@wikioasis.org)'),
     'timeout' => (int) env('MW_HTTP_TIMEOUT', 15),
-    'oauth' => [
-        'client_id' => env('MW_OAUTH_CLIENT_ID'),
-        'client_secret' => env('MW_OAUTH_CLIENT_SECRET'),
-        'redirect_uri' => env('MW_OAUTH_REDIRECT_URI'),
-        'authorize_endpoint' => env('MW_OAUTH_AUTHORIZE', '/oauth2/authorize'),
-        'token_endpoint' => env('MW_OAUTH_TOKEN', '/oauth2/access_token'),
-        'profile_endpoint' => env('MW_OAUTH_PROFILE', '/oauth2/resource/profile'),
-        'scopes' => env('MW_OAUTH_SCOPES', 'basic'),
-    ],
-    'group_flags' => [
-        'safety' => ['ts', 'admin'],
-    ],
-    'bootstrap_admins' => array_values(array_filter(
-        array_map('trim', explode('|', (string) env('MW_BOOTSTRAP_ADMINS', '')))
-    )),
     's2s' => [
         'secret' => env('MW_S2S_SECRET'),
         'tolerance' => (int) env('MW_S2S_TOLERANCE', 300),
