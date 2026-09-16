@@ -118,9 +118,9 @@ export const PUSH_LABELS = {
 	pending: 'Not sent yet',
 	pushed: 'In force',
 	recorded: 'Recorded',
-	queued: 'Applying',
+	queued: 'Queued',
 	manual: 'Needs doing by hand',
-	failed: 'Could not be sent',
+	failed: 'Failed',
 	partial: 'Recorded, not enforced',
 	acknowledged: 'Done by hand'
 };
@@ -134,6 +134,16 @@ export const PUSH_CHIP = {
 	failed: 'error',
 	partial: 'error',
 	acknowledged: 'success'
+};
+
+export const FORCE_LABELS = {
+	'in-force': 'In force',
+	lifted: 'No longer in force'
+};
+
+export const FORCE_CHIP = {
+	'in-force': 'error',
+	lifted: 'notice'
 };
 
 export const INVESTIGATION_STATUS_LABELS = {
@@ -214,6 +224,7 @@ export const ROLE_CHIP = {
 export function chipTone( kind, value ) {
 	const maps = {
 		case: STATUS_CHIP,
+		force: FORCE_CHIP,
 		standing: STANDING_CHIP,
 		push: PUSH_CHIP,
 		investigation: INVESTIGATION_STATUS_CHIP,

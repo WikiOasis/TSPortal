@@ -373,6 +373,7 @@ import StatusChip from '../components/StatusChip.vue';
 import CaseTimeline from '../components/CaseTimeline.vue';
 import IssueActionDialog from '../components/IssueActionDialog.vue';
 import { api } from '../lib/api.js';
+import { remember } from '../lib/recents.js';
 import {
 	ago, dateTime, NOTE_KINDS, OUTCOMES, PRIORITIES, SUBJECT_ROLES
 } from '../lib/format.js';
@@ -456,6 +457,16 @@ async function load() {
 	try {
 		const response = await api.investigation( props.id );
 		adopt( response.data );
+		remember( {
+			kind: 'investigation',
+			kind_label: 'Investigation',
+			id: response.data.id,
+			title: response.data.title,
+			reference: response.data.reference,
+			route: 'investigation',
+			status: response.data.status,
+			status_of: 'investigation'
+		} );
 		loadTimeline();
 	} catch ( e ) {
 		error.value = e;

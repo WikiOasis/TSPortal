@@ -98,6 +98,12 @@ Route::prefix('portal')->name('portal.')->group(function () {
         Route::get('/search/help', [Portal\ObjectController::class, 'help'])->name('search.help');
         Route::get('/objects/{reference}', [Portal\ObjectController::class, 'show'])->name('objects.show');
 
+        Route::get('/search', [Portal\SearchController::class, 'find'])->name('search.find');
+        Route::get('/search/recents', [Portal\SearchController::class, 'recents'])->name('search.recents');
+        Route::get('/search/preview/{kind}/{id}', [Portal\SearchController::class, 'preview'])
+            ->whereNumber('id')
+            ->name('search.preview');
+
         Route::get('/subjects', [Portal\SubjectController::class, 'index'])->name('subjects.index');
         Route::post('/subjects/resolve', [Portal\SubjectController::class, 'resolve'])->name('subjects.resolve');
         Route::get('/subjects/{subject}', [Portal\SubjectController::class, 'show'])->name('subjects.show');

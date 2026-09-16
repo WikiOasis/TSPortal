@@ -277,6 +277,7 @@ import StatusChip from '../components/StatusChip.vue';
 import OpenInvestigationDialog from '../components/OpenInvestigationDialog.vue';
 import IssueActionDialog from '../components/IssueActionDialog.vue';
 import { api } from '../lib/api.js';
+import { remember } from '../lib/recents.js';
 import { date, dateTime, LEGAL_BASES } from '../lib/format.js';
 import { session } from '../lib/session.js';
 
@@ -320,6 +321,15 @@ async function load() {
 	error.value = null;
 	try {
 		item.value = await api.subject( props.id );
+		remember( {
+			kind: 'subject',
+			kind_label: 'Account',
+			id: item.value.id,
+			title: item.value.username,
+			route: 'subject',
+			status: item.value.standing,
+			status_of: 'standing'
+		} );
 		notes.value = item.value.notes ?? '';
 	} catch ( e ) {
 		error.value = e;

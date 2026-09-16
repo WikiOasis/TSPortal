@@ -340,6 +340,7 @@ import DataRequestPanel from '../components/DataRequestPanel.vue';
 import AppealPanel from '../components/AppealPanel.vue';
 import OpenInvestigationDialog from '../components/OpenInvestigationDialog.vue';
 import { api } from '../lib/api.js';
+import { remember } from '../lib/recents.js';
 import { ago, dateTime, fileSize, PRIORITIES, TYPE_LABELS } from '../lib/format.js';
 import { session } from '../lib/session.js';
 
@@ -458,6 +459,16 @@ async function load() {
 	try {
 		const response = await api.case( props.id );
 		adopt( response.data );
+		remember( {
+			kind: 'case',
+			kind_label: 'Report',
+			id: response.data.id,
+			title: response.data.subject,
+			reference: response.data.reference,
+			route: 'case',
+			status: response.data.status,
+			status_of: 'case'
+		} );
 		loadTimeline();
 	} catch ( e ) {
 		error.value = e;

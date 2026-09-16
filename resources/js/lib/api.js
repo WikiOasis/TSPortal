@@ -109,6 +109,10 @@ export const api = {
 	findObjects: ( q, params ) => request( 'GET', `/portal/objects/search${ query( { q, ...params } ) }` ),
 	searchHelp: () => request( 'GET', '/portal/search/help' ),
 
+	search: ( q, params, options ) => request( 'GET', `/portal/search${ query( { q, ...params } ) }`, undefined, options ),
+	searchRecents: ( options ) => request( 'GET', '/portal/search/recents', undefined, options ),
+	searchPreview: ( kind, id, options ) => request( 'GET', `/portal/search/preview/${ kind }/${ id }`, undefined, options ),
+
 	wikis: ( params ) => request( 'GET', `/portal/wikis${ query( params ) }` ),
 
 	staff: () => request( 'GET', '/portal/staff' ),

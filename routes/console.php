@@ -9,3 +9,9 @@ use Illuminate\Support\Facades\Schedule;
 Schedule::job(new ExpireDueSanctions)->everyTenMinutes();
 
 Schedule::job(new AdvanceDataRemovals)->everyMinute();
+
+if (config('opensearch.enabled')) {
+    Schedule::command('tsportal:search-index --since=20m')
+        ->everyFiveMinutes()
+        ->withoutOverlapping();
+}
