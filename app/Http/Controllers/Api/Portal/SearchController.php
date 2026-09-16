@@ -71,6 +71,39 @@ class SearchController extends Controller
         ]);
     }
 
+    public function related(Request $request, string $kind, int $id): JsonResponse
+    {
+        $data = $request->validate([
+            'limit' => ['nullable', 'integer', 'min:1', 'max:10'],
+        ]);
+
+        if (! in_array($kind, PortalSearch::SEED_KINDS, true)) {
+            return response()->json([
+                'error' => 'not-found',
+                'message' => 'Nothing in the portal is kept like that.',
+            ], 404);
+        }
+
+        $found = $this->search->related($kind, $id, (int) ($data['limit'] ?? 5));
+
+        if ($found['seed'] === null) {
+            return response()->json([
+                'error' => 'not-found',
+                'message' => 'That is no longer in the portal.',
+            ], 404);
+        }
+
+        return response()->json([
+            'data' => $found['rows'],
+            'meta' => [
+                'seed' => $found['seed'],
+                'engine' => $found['engine'],
+                'degraded' => $found['degraded'],
+                'full_text' => $this->search->fullTextAvailable(),
+            ],
+        ]);
+    }
+
     public function preview(string $kind, int $id): JsonResponse
     {
         $preview = $this->preview->of($kind, $id);

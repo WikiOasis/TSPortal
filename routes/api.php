@@ -103,6 +103,9 @@ Route::prefix('portal')->name('portal.')->group(function () {
         Route::get('/search/preview/{kind}/{id}', [Portal\SearchController::class, 'preview'])
             ->whereNumber('id')
             ->name('search.preview');
+        Route::get('/search/related/{kind}/{id}', [Portal\SearchController::class, 'related'])
+            ->whereNumber('id')
+            ->name('search.related');
 
         Route::get('/subjects', [Portal\SubjectController::class, 'index'])->name('subjects.index');
         Route::post('/subjects/resolve', [Portal\SubjectController::class, 'resolve'])->name('subjects.resolve');

@@ -112,6 +112,7 @@ export const api = {
 	search: ( q, params, options ) => request( 'GET', `/portal/search${ query( { q, ...params } ) }`, undefined, options ),
 	searchRecents: ( options ) => request( 'GET', '/portal/search/recents', undefined, options ),
 	searchPreview: ( kind, id, options ) => request( 'GET', `/portal/search/preview/${ kind }/${ id }`, undefined, options ),
+	searchRelated: ( kind, id, params, options ) => request( 'GET', `/portal/search/related/${ kind }/${ id }${ query( params ) }`, undefined, options ),
 
 	wikis: ( params ) => request( 'GET', `/portal/wikis${ query( params ) }` ),
 

@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\CaseComment;
+use App\Models\Investigation;
 use App\Models\SafetyCase;
+use App\Models\Subject;
+use App\Models\TransparencyReport;
 use App\Models\User;
 use App\Services\Search\PortalSearch;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -25,6 +28,14 @@ class SearchIndexTest extends TestCase
             'opensearch.url' => 'http://opensearch.test:9200',
             'opensearch.prefix' => 'tsportal',
         ]);
+    }
+
+    private function staff(): User
+    {
+        return User::query()->firstOrCreate(
+            ['mw_central_id' => 1],
+            ['username' => 'Admin', 'flags' => ['ts', 'admin']],
+        );
     }
 
     private function case(array $attributes = []): SafetyCase
@@ -213,6 +224,140 @@ class SearchIndexTest extends TestCase
             ->assertSuccessful();
 
         Http::assertNotSent(fn (Request $request) => str_contains($request->url(), '/_bulk'));
+    }
+
+    #[Test]
+    public function what_looks_alike_is_asked_of_the_cluster_and_read_out_of_the_database(): void
+    {
+        $this->useOpenSearch();
+
+        $subject = Subject::forUsername('Quiet Marlin', 42);
+
+        $case = $this->case(['subject_line' => 'Harassment in talk pages']);
+        $case->subjects()->attach($subject->id, ['role' => 'reported']);
+
+        $investigation = Investigation::create([
+            'reference' => 'TS-2026-0900',
+            'title' => 'A pattern of following people about',
+            'opened_at' => now(),
+        ]);
+        $investigation->subjects()->attach($subject->id, ['role' => 'suspect']);
+
+        Http::fake([
+            '*/_search*' => Http::response([
+                'hits' => [
+                    'hits' => [[
+                        '_source' => ['kind' => 'investigation', 'id' => $investigation->id],
+                    ]],
+                ],
+            ]),
+        ]);
+
+        $found = $this->actingAs($this->staff())
+            ->getJson("/api/portal/search/related/case/{$case->id}")
+            ->assertOk()
+            ->json();
+
+        $this->assertSame('opensearch', $found['meta']['engine']);
+        $this->assertSame($case->reference, $found['meta']['seed']['reference']);
+
+        $this->assertSame([$investigation->title], array_column($found['data'], 'title'));
+        $this->assertSame('Also about Quiet Marlin', $found['data'][0]['related_by']);
+
+        Http::assertSent(function (Request $request) use ($case) {
+            $body = json_decode($request->body(), true);
+            $should = $body['query']['bool']['should'] ?? [];
+
+            return str_contains($request->url(), '/_search')
+                && $body['size'] === 5
+                && $should[0]['more_like_this']['like'] === [
+                    "Harassment in talk pages\nQuiet Marlin",
+                ]
+                && $should[1]['terms']['accounts.raw'] === ['Quiet Marlin']
+                && $should[2]['match_phrase']['body']['query'] === $case->reference
+                && $body['query']['bool']['must_not'] === [['bool' => ['filter' => [
+                    ['term' => ['kind' => 'case']],
+                    ['term' => ['id' => $case->id]],
+                ]]]];
+        });
+    }
+
+    #[Test]
+    public function a_transparency_report_is_compared_by_its_words_and_its_period(): void
+    {
+        $this->useOpenSearch();
+
+        $report = TransparencyReport::create([
+            'reference' => 'TS-2026-0500',
+            'title' => 'Transparency report, first half of 2026',
+            'period_start' => '2026-01-01',
+            'period_end' => '2026-06-30',
+        ]);
+
+        Http::fake(['*/_search*' => Http::response(['hits' => ['hits' => []]])]);
+
+        $this->actingAs($this->staff())
+            ->getJson("/api/portal/search/related/transparency/{$report->id}")
+            ->assertOk()
+            ->assertJsonPath('meta.seed.kind_label', 'Transparency report');
+
+        Http::assertSent(function (Request $request) {
+            $should = json_decode($request->body(), true)['query']['bool']['should'] ?? [];
+
+            return str_contains($request->url(), '/_search')
+                && ($should[2]['range']['created_at'] ?? null) === [
+                    'gte' => '2026-01-01',
+                    'lte' => '2026-06-30',
+                    'boost' => 2,
+                ];
+        });
+    }
+
+    #[Test]
+    public function without_a_cluster_nothing_looks_alike(): void
+    {
+        config(['opensearch.enabled' => false]);
+
+        $case = $this->case();
+
+        $found = $this->actingAs($this->staff())
+            ->getJson("/api/portal/search/related/case/{$case->id}")
+            ->assertOk()
+            ->json();
+
+        $this->assertSame([], $found['data']);
+        $this->assertSame('database', $found['meta']['engine']);
+        $this->assertFalse($found['meta']['full_text']);
+    }
+
+    #[Test]
+    public function a_cluster_that_does_not_answer_leaves_the_related_list_empty(): void
+    {
+        $this->useOpenSearch();
+
+        $case = $this->case();
+
+        Http::fake(['*' => Http::response(['error' => ['reason' => 'no such index']], 500)]);
+
+        $this->actingAs($this->staff())
+            ->getJson("/api/portal/search/related/case/{$case->id}")
+            ->assertOk()
+            ->assertJsonPath('data', [])
+            ->assertJsonPath('meta.degraded', true);
+    }
+
+    #[Test]
+    public function there_is_nothing_like_something_that_is_gone(): void
+    {
+        $this->useOpenSearch();
+
+        $this->actingAs($this->staff())
+            ->getJson('/api/portal/search/related/case/9999')
+            ->assertNotFound();
+
+        $this->actingAs($this->staff())
+            ->getJson('/api/portal/search/related/dashboard/1')
+            ->assertNotFound();
     }
 
     #[Test]

@@ -1359,6 +1359,53 @@ tr:hover .ts-chip-select .cdx-select-vue__handle {
 	color: @color-subtle;
 }
 
+.ts-switcher__settings-toggle {
+	margin-left: auto;
+}
+
+.ts-switcher__settings {
+	padding: @spacing-50 @spacing-75;
+	border-bottom: @border-width-base @border-style-base @border-color-subtle;
+	background-color: @background-color-interactive-subtle;
+}
+
+.ts-switcher__settings-note {
+	margin: 0 0 @spacing-50;
+	color: @color-subtle;
+	font-size: @font-size-x-small;
+}
+
+.ts-switcher__settings-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: @spacing-25;
+}
+
+.ts-switcher__settings-row {
+	display: flex;
+	align-items: center;
+	gap: @spacing-50;
+	padding: @spacing-25 @spacing-50;
+	border-radius: @border-radius-base;
+	background-color: @background-color-base;
+	font-size: @font-size-small;
+}
+
+.ts-switcher__settings-icon {
+	color: @color-subtle;
+}
+
+.ts-switcher__settings-label {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .ts-switcher__body {
 	display: grid;
 	grid-template-columns: minmax( 0, 1fr );

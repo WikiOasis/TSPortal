@@ -8,6 +8,7 @@ use App\Models\DataRemoval;
 use App\Models\Investigation;
 use App\Models\SafetyCase;
 use App\Models\Subject;
+use App\Models\TransparencyReport;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -18,6 +19,12 @@ final class PortalSearch
     public const ENGINE_OPENSEARCH = 'opensearch';
 
     public const ENGINE_DATABASE = 'database';
+
+    public const SEED_TRANSPARENCY = 'transparency';
+
+    public const SEED_KINDS = [...SearchDocuments::KINDS, self::SEED_TRANSPARENCY];
+
+    private const SEED_LENGTH = 6000;
 
     private const HIGHLIGHT_OPEN = "\u{2062}[";
 
@@ -111,6 +118,238 @@ final class PortalSearch
     }
 
     /**
+     * @return array{rows: list<array<string, mixed>>, seed: array<string, mixed>|null, engine: string, degraded: bool}
+     */
+    public function related(string $kind, int $id, int $limit = 5): array
+    {
+        $limit = max(1, min(10, $limit));
+        $seed = $this->seed($kind, $id);
+
+        if ($seed === null) {
+            return $this->nothingRelated(null, degraded: false);
+        }
+
+        if (! $this->fullTextAvailable()) {
+            return $this->nothingRelated($seed['about'], degraded: false);
+        }
+
+        $should = $this->likeSeed($seed);
+
+        if ($should === []) {
+            return $this->nothingRelated($seed['about'], degraded: false);
+        }
+
+        $kinds = SearchDocuments::KINDS;
+
+        $body = [
+            'size' => $limit,
+            'track_total_hits' => false,
+            'query' => [
+                'bool' => [
+                    'should' => $should,
+                    'minimum_should_match' => 1,
+                    'must_not' => [['bool' => ['filter' => [
+                        ['term' => ['kind' => $kind]],
+                        ['term' => ['id' => $id]],
+                    ]]]],
+                ],
+            ],
+            '_source' => ['includes' => ['kind', 'id']],
+            'highlight' => [
+                'pre_tags' => [self::HIGHLIGHT_OPEN],
+                'post_tags' => [self::HIGHLIGHT_CLOSE],
+                'fragment_size' => (int) config('opensearch.fragment_size'),
+                'number_of_fragments' => 1,
+                'fields' => ['body' => new \stdClass],
+            ],
+            'sort' => ['_score', ['updated_at' => 'desc']],
+        ];
+
+        try {
+            $response = $this->search->search($this->indices($kinds), $body);
+        } catch (SearchUnavailable $e) {
+            report($e);
+
+            return $this->nothingRelated($seed['about'], degraded: true);
+        }
+
+        $rows = array_map(
+            fn (array $row) => array_merge($row, [
+                'related_by' => $this->sharedAccount($row, $seed['accounts']),
+            ]),
+            $this->rowsFromHits($response['hits']['hits'] ?? [], $kinds),
+        );
+
+        return [
+            'rows' => $rows,
+            'seed' => $seed['about'],
+            'engine' => self::ENGINE_OPENSEARCH,
+            'degraded' => false,
+        ];
+    }
+
+    /**
+     * @return array{rows: list<array<string, mixed>>, seed: array<string, mixed>|null, engine: string, degraded: bool}
+     */
+    private function nothingRelated(?array $about, bool $degraded): array
+    {
+        return [
+            'rows' => [],
+            'seed' => $about,
+            'engine' => self::ENGINE_DATABASE,
+            'degraded' => $degraded,
+        ];
+    }
+
+    /**
+     * @return array{about: array<string, mixed>, text: string, accounts: list<string>, reference: string|null, period: array{0: string, 1: string}|null}|null
+     */
+    private function seed(string $kind, int $id): ?array
+    {
+        if ($kind === self::SEED_TRANSPARENCY) {
+            return $this->transparencySeed($id);
+        }
+
+        if (! in_array($kind, SearchDocuments::KINDS, true)) {
+            return null;
+        }
+
+        $model = $this->documents->source($kind)->whereKey($id)->first();
+
+        if ($model === null) {
+            return null;
+        }
+
+        $document = $this->documents->build($kind, $model);
+        $accounts = array_values((array) ($document['accounts'] ?? []));
+
+        return [
+            'about' => [
+                'kind' => $kind,
+                'kind_label' => SearchDocuments::label($kind),
+                'id' => $id,
+                'reference' => $document['reference'],
+                'title' => $document['title'],
+            ],
+            'text' => $this->seedText([
+                $document['title'],
+                $document['subtitle'],
+                implode(' ', $accounts),
+                $document['body'],
+            ]),
+            'accounts' => $accounts,
+            'reference' => $document['reference'],
+            'period' => null,
+        ];
+    }
+
+    private function transparencySeed(int $id): ?array
+    {
+        $report = TransparencyReport::query()->find($id);
+
+        if ($report === null) {
+            return null;
+        }
+
+        $start = $report->period_start?->toDateString();
+        $end = $report->period_end?->toDateString();
+
+        return [
+            'about' => [
+                'kind' => self::SEED_TRANSPARENCY,
+                'kind_label' => 'Transparency report',
+                'id' => $id,
+                'reference' => $report->reference,
+                'title' => $report->title,
+            ],
+            'text' => $this->seedText([$report->title, $report->notes]),
+            'accounts' => [],
+            'reference' => $report->reference,
+            'period' => $start !== null && $end !== null ? [$start, $end] : null,
+        ];
+    }
+
+    /**
+     * @param  array{text: string, accounts: list<string>, reference: string|null, period: array{0: string, 1: string}|null}  $seed
+     * @return list<array<string, mixed>>
+     */
+    private function likeSeed(array $seed): array
+    {
+        $should = [];
+
+        if ($seed['text'] !== '') {
+            $should[] = ['more_like_this' => [
+                'fields' => ['title^3', 'subtitle^2', 'accounts^3', 'body'],
+                'like' => [$seed['text']],
+                'min_term_freq' => 1,
+                'min_doc_freq' => 1,
+                'max_query_terms' => 30,
+                'minimum_should_match' => '20%',
+            ]];
+        }
+
+        if ($seed['accounts'] !== []) {
+            $should[] = ['terms' => [
+                'accounts.raw' => array_slice($seed['accounts'], 0, 20),
+                'boost' => 8,
+            ]];
+        }
+
+        if ($seed['reference'] !== null && $seed['reference'] !== '') {
+            $should[] = ['match_phrase' => ['body' => ['query' => $seed['reference'], 'boost' => 6]]];
+        }
+
+        if ($seed['period'] !== null) {
+            $should[] = ['range' => ['created_at' => [
+                'gte' => $seed['period'][0],
+                'lte' => $seed['period'][1],
+                'boost' => 2,
+            ]]];
+        }
+
+        return $should;
+    }
+
+    /**
+     * @param  list<mixed>  $parts
+     */
+    private function seedText(array $parts): string
+    {
+        $pieces = [];
+
+        foreach ($parts as $part) {
+            $piece = is_string($part) ? trim($part) : '';
+
+            if ($piece !== '') {
+                $pieces[] = $piece;
+            }
+        }
+
+        return mb_substr(implode("\n", $pieces), 0, self::SEED_LENGTH);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  list<string>  $accounts
+     */
+    private function sharedAccount(array $row, array $accounts): ?string
+    {
+        if ($accounts === []) {
+            return null;
+        }
+
+        $wanted = array_map(mb_strtolower(...), $accounts);
+
+        foreach ((array) ($row['accounts'] ?? []) as $name) {
+            if (is_string($name) && in_array(mb_strtolower($name), $wanted, true)) {
+                return 'Also about '.$name;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @param  list<string>  $kinds
      * @param  array<string, mixed>  $options
      * @return array{rows: list<array<string, mixed>>, engine: string, total: int, degraded: bool}
@@ -171,14 +410,25 @@ final class PortalSearch
             ];
         }
 
-        $indices = implode(',', array_map(
-            fn (string $kind) => $this->search->indexName($kind),
-            $kinds,
-        ));
+        $response = $this->search->search($this->indices($kinds), $body);
 
-        $response = $this->search->search($indices, $body);
+        $rows = $this->rowsFromHits($response['hits']['hits'] ?? [], $kinds);
 
-        $hits = $response['hits']['hits'] ?? [];
+        return [
+            'rows' => $rows,
+            'engine' => self::ENGINE_OPENSEARCH,
+            'total' => (int) ($response['hits']['total']['value'] ?? count($rows)),
+            'degraded' => false,
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $hits
+     * @param  list<string>  $kinds
+     * @return list<array<string, mixed>>
+     */
+    private function rowsFromHits(array $hits, array $kinds): array
+    {
         $wanted = [];
         $highlights = [];
 
@@ -210,12 +460,18 @@ final class PortalSearch
 
         ksort($rows);
 
-        return [
-            'rows' => array_values($rows),
-            'engine' => self::ENGINE_OPENSEARCH,
-            'total' => (int) ($response['hits']['total']['value'] ?? count($rows)),
-            'degraded' => false,
-        ];
+        return array_values($rows);
+    }
+
+    /**
+     * @param  list<string>  $kinds
+     */
+    private function indices(array $kinds): string
+    {
+        return implode(',', array_map(
+            fn (string $kind) => $this->search->indexName($kind),
+            $kinds,
+        ));
     }
 
     /**
@@ -447,6 +703,7 @@ final class PortalSearch
             'created' => $model->created_at?->toIso8601String(),
             'updated' => $model->updated_at?->toIso8601String(),
             'snippet' => $snippet,
+            'related_by' => null,
         ], $shape);
     }
 

@@ -101,11 +101,68 @@
 				>
 					Clear
 				</cdx-button>
+
+				<cdx-button
+					class="ts-switcher__filter ts-switcher__settings-toggle"
+					:class="{ 'ts-switcher__filter--on': settingsOpen }"
+					weight="quiet"
+					:aria-expanded="settingsOpen"
+					aria-controls="ts-switcher-settings"
+					aria-label="What the empty box offers"
+					@click="settingsOpen = !settingsOpen"
+				>
+					<cdx-icon :icon="cdxIconSettings" />
+				</cdx-button>
+			</div>
+
+			<div v-if="settingsOpen" id="ts-switcher-settings" class="ts-switcher__settings">
+				<p class="ts-switcher__settings-note">
+					What the empty box offers, and in what order. Related only turns up while you are
+					looking at a report, an investigation, an account or a transparency report.
+				</p>
+
+				<ul class="ts-switcher__settings-list">
+					<li
+						v-for="( section, at ) in orderedSections"
+						:key="section.value"
+						class="ts-switcher__settings-row"
+					>
+						<cdx-icon :icon="section.icon" class="ts-switcher__settings-icon" />
+
+						<span class="ts-switcher__settings-label">{{ section.label }}</span>
+
+						<span v-if="section.value === 'related' && !seed" class="ts-meta">
+							Nothing to compare here
+						</span>
+
+						<cdx-button
+							weight="quiet"
+							:disabled="at === 0"
+							:aria-label="`Move ${ section.label } up`"
+							@click="moveSection( at, -1 )"
+						>
+							<cdx-icon :icon="cdxIconUpTriangle" />
+						</cdx-button>
+
+						<cdx-button
+							weight="quiet"
+							:disabled="at === orderedSections.length - 1"
+							:aria-label="`Move ${ section.label } down`"
+							@click="moveSection( at, 1 )"
+						>
+							<cdx-icon :icon="cdxIconDownTriangle" />
+						</cdx-button>
+					</li>
+				</ul>
 			</div>
 
 			<div class="ts-switcher__body">
 				<div class="ts-switcher__list">
-					<cdx-progress-bar v-if="loading" class="ts-switcher__progress" aria-label="Searching" />
+					<cdx-progress-bar
+						v-if="loading || relatedLoading"
+						class="ts-switcher__progress"
+						aria-label="Searching"
+					/>
 
 					<ul
 						v-if="groups.length"
@@ -139,6 +196,7 @@
 										<span v-if="row.reference" class="ts-mono">{{ row.reference }}</span>
 										<span>{{ row.kind_label }}</span>
 										<span v-if="row.assignee">{{ row.assignee }}</span>
+										<span v-if="row.related_by">{{ row.related_by }}</span>
 										<span v-if="row.updated">{{ ago( row.updated ) }}</span>
 									</span>
 
@@ -270,13 +328,14 @@
 
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import {
 	CdxButton, CdxDialog, CdxIcon, CdxInfoChip, CdxMenuButton, CdxProgressBar, CdxToggleButton
 } from '@wikimedia/codex';
 import {
-	cdxIconAdd, cdxIconArticle, cdxIconBlock, cdxIconClose, cdxIconExpand, cdxIconFlag,
-	cdxIconLinkExternal, cdxIconSearch, cdxIconTrash, cdxIconUserAvatar, cdxIconUserGroup,
+	cdxIconAdd, cdxIconArticle, cdxIconBlock, cdxIconClose, cdxIconDownTriangle, cdxIconExpand,
+	cdxIconFlag, cdxIconHistory, cdxIconLightbulb, cdxIconLinkExternal, cdxIconSearch,
+	cdxIconSettings, cdxIconTrash, cdxIconUpTriangle, cdxIconUserAvatar, cdxIconUserGroup,
 	cdxIconViewCompact
 } from '@wikimedia/codex-icons';
 import StatusChip from './StatusChip.vue';
@@ -290,9 +349,18 @@ const props = defineProps( {
 
 const emit = defineEmits( [ 'update:open' ] );
 const router = useRouter();
+const route = useRoute();
 
 const PREVIEW_KEY = 'tsportal:switcher-preview';
+const ORDER_KEY = 'tsportal:switcher-order';
 const DETAIL_ROUTES = [ 'case', 'investigation', 'subject', 'transparency-report' ];
+
+const SEED_KINDS = {
+	case: 'case',
+	investigation: 'investigation',
+	subject: 'subject',
+	'transparency-report': 'transparency'
+};
 
 const ICONS = {
 	case: cdxIconFlag,
@@ -305,6 +373,12 @@ const ICONS = {
 const EXTRAS = [
 	{ value: 'mine', label: 'With me', icon: cdxIconUserAvatar },
 	{ value: 'open', label: 'Only what is open', icon: cdxIconFlag }
+];
+
+const SECTIONS = [
+	{ value: 'related', label: 'Related', icon: cdxIconLightbulb },
+	{ value: 'recent', label: 'Recent', icon: cdxIconHistory },
+	{ value: 'mine', label: 'Open, and yours', icon: cdxIconUserAvatar }
 ];
 
 const appName = window.TSPortal?.appName ?? 'TSPortal';
@@ -322,8 +396,14 @@ const meta = ref( { engine: null, total: 0, degraded: false, full_text: false } 
 const kindList = ref( [] );
 const serverRecents = ref( [] );
 const localRecents = ref( [] );
+const related = ref( [] );
+const relatedSeed = ref( null );
+
+const order = ref( readOrder() );
+const settingsOpen = ref( false );
 
 const loading = ref( false );
+const relatedLoading = ref( false );
 const error = ref( false );
 
 const activeKey = ref( null );
@@ -366,7 +446,24 @@ const spareExtras = computed( () => EXTRAS
 	.filter( ( extra ) => !extras.value.includes( extra.value ) )
 	.map( ( extra ) => ( { value: extra.value, label: extra.label, icon: extra.icon } ) ) );
 
-const groups = computed( () => ( term.value ? foundGroups() : recentGroups() ) );
+const seed = computed( () => {
+	const kind = SEED_KINDS[ route.name ];
+	const id = Number( route.params.id );
+
+	return kind && Number.isInteger( id ) && id > 0 ? { kind, id } : null;
+} );
+
+const orderedSections = computed( () => order.value
+	.map( ( value ) => SECTIONS.find( ( section ) => section.value === value ) )
+	.filter( Boolean ) );
+
+const relatedLabel = computed( () => {
+	const about = relatedSeed.value;
+
+	return about ? `Related to ${ about.reference || about.title }` : 'Related';
+} );
+
+const groups = computed( () => ( term.value ? foundGroups() : idleGroups() ) );
 
 const flat = computed( () => groups.value.flatMap( ( group ) => group.rows ) );
 
@@ -456,33 +553,86 @@ function foundGroups() {
 		.filter( ( group ) => group.rows.length );
 }
 
-function recentGroups() {
+function idleGroups() {
 	const seen = new Set();
+
+	const fresh = ( list ) => list.filter( ( row ) => {
+		const key = `${ row.kind }:${ row.id }`;
+
+		if ( seen.has( key ) ) {
+			return false;
+		}
+
+		seen.add( key );
+
+		return true;
+	} );
+
+	return order.value
+		.flatMap( ( section ) => {
+			if ( section === 'related' ) {
+				return [ { key: 'related', label: relatedLabel.value, rows: fresh( related.value ) } ];
+			}
+
+			if ( section === 'mine' ) {
+				return [ { key: 'mine', label: 'Open, and yours', rows: fresh( serverRecents.value ) } ];
+			}
+
+			return recentBuckets( fresh( localRecents.value ) );
+		} )
+		.filter( ( group ) => group.rows.length );
+}
+
+function recentBuckets( list ) {
 	const buckets = [
 		{ key: 'today', label: 'Today', rows: [] },
 		{ key: 'week', label: 'Past week', rows: [] },
 		{ key: 'earlier', label: 'Earlier', rows: [] }
 	];
 
-	for ( const row of localRecents.value ) {
-		const key = `${ row.kind }:${ row.id }`;
-		if ( seen.has( key ) ) {
-			continue;
-		}
-		seen.add( key );
-
+	for ( const row of list ) {
 		const days = ( Date.now() - new Date( row.visited ).getTime() ) / 86400000;
 		const bucket = days < 1 ? buckets[ 0 ] : ( days < 7 ? buckets[ 1 ] : buckets[ 2 ] );
 
 		bucket.rows.push( { ...row, updated: row.updated ?? row.visited } );
 	}
 
-	const mine = serverRecents.value.filter( ( row ) => !seen.has( `${ row.kind }:${ row.id }` ) );
+	return buckets;
+}
 
-	return [
-		...buckets.filter( ( bucket ) => bucket.rows.length ),
-		...( mine.length ? [ { key: 'mine', label: 'Open, and yours', rows: mine } ] : [] )
-	];
+function readOrder() {
+	const known = SECTIONS.map( ( section ) => section.value );
+
+	let saved = [];
+
+	try {
+		saved = ( window.localStorage.getItem( ORDER_KEY ) ?? '' ).split( ',' );
+	} catch ( e ) {
+		saved = [];
+	}
+
+	const kept = saved.filter(
+		( value, at ) => known.includes( value ) && saved.indexOf( value ) === at
+	);
+
+	return [ ...kept, ...known.filter( ( value ) => !kept.includes( value ) ) ];
+}
+
+function moveSection( at, by ) {
+	const to = at + by;
+
+	if ( to < 0 || to >= order.value.length ) {
+		return;
+	}
+
+	const next = [ ...order.value ];
+	[ next[ at ], next[ to ] ] = [ next[ to ], next[ at ] ];
+
+	order.value = next;
+
+	try {
+		window.localStorage.setItem( ORDER_KEY, next.join( ',' ) );
+	} catch ( e ) { }
 }
 
 let timer = null;
@@ -603,6 +753,54 @@ async function loadPreview( row, key ) {
 	}
 }
 
+let relatedRequest = 0;
+let relatedInFlight = null;
+
+async function loadRelated() {
+	const id = ++relatedRequest;
+
+	relatedInFlight?.abort();
+
+	related.value = [];
+	relatedSeed.value = null;
+
+	const item = seed.value;
+
+	if ( !item ) {
+		relatedLoading.value = false;
+
+		return;
+	}
+
+	relatedInFlight = new AbortController();
+	relatedLoading.value = true;
+
+	try {
+		const response = await api.searchRelated(
+			item.kind,
+			item.id,
+			{ limit: 5 },
+			{ signal: relatedInFlight.signal }
+		);
+
+		if ( id !== relatedRequest ) {
+			return;
+		}
+
+		related.value = response.data;
+		relatedSeed.value = response.meta.seed;
+	} catch ( e ) {
+		if ( id === relatedRequest ) {
+			related.value = [];
+			relatedSeed.value = null;
+		}
+	} finally {
+		if ( id === relatedRequest ) {
+			relatedLoading.value = false;
+		}
+	}
+}
+
 async function loadRecents() {
 	localRecents.value = recents();
 
@@ -621,6 +819,7 @@ watch( () => props.open, ( isOpen ) => {
 	if ( !isOpen ) {
 		clearTimeout( timer );
 		inFlight?.abort();
+		relatedInFlight?.abort();
 
 		return;
 	}
@@ -629,10 +828,12 @@ watch( () => props.open, ( isOpen ) => {
 	rows.value = [];
 	error.value = false;
 	activeKey.value = null;
+	settingsOpen.value = false;
 	previews.clear();
 	preview.value = null;
 
 	loadRecents();
+	loadRelated();
 
 	nextTick( () => inputRef.value?.focus() );
 } );
@@ -651,6 +852,7 @@ onUnmounted( () => {
 	clearTimeout( timer );
 	clearTimeout( previewTimer );
 	inFlight?.abort();
+	relatedInFlight?.abort();
 } );
 
 function close( value ) {
