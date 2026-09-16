@@ -74,7 +74,7 @@
 					<section class="ts-section">
 						<h2 class="ts-section__title">What was said</h2>
 						<div class="ts-panel">
-							<p v-if="item.summary" style="white-space: pre-wrap; margin-top: 0;">{{ item.summary }}</p>
+							<p v-if="item.summary" class="ts-summary">{{ item.summary }}</p>
 							<p v-else class="ts-meta">No summary was given.</p>
 
 							<div v-if="item.about.length" class="ts-inline">
