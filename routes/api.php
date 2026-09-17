@@ -69,6 +69,10 @@ Route::prefix('portal')->name('portal.')->group(function () {
         Route::post('/cases/{case}/comments', [Portal\CaseController::class, 'comment'])->name('cases.comment');
         Route::get('/cases/{case}/timeline', [Portal\CaseController::class, 'timeline'])->name('cases.timeline');
 
+        Route::get('/cases/{case}/duplicates/candidates', [Portal\CaseController::class, 'duplicateCandidates'])->name('cases.duplicates.candidates');
+        Route::post('/cases/{case}/duplicate', [Portal\CaseController::class, 'markDuplicate'])->name('cases.duplicate');
+        Route::delete('/cases/{case}/duplicate', [Portal\CaseController::class, 'undoDuplicate'])->name('cases.duplicate.undo');
+
         Route::put('/cases/{case}/categories', [Portal\CaseController::class, 'categorise'])->name('cases.categorise');
 
         Route::get('/attachments/{attachment}', [Portal\AttachmentController::class, 'show'])->name('attachments.show');
@@ -87,6 +91,9 @@ Route::prefix('portal')->name('portal.')->group(function () {
         Route::get('/investigations/{investigation}/timeline', [Portal\InvestigationController::class, 'timeline'])->name('investigations.timeline');
         Route::post('/investigations/{investigation}/notes', [Portal\InvestigationController::class, 'note'])->name('investigations.note');
         Route::post('/investigations/{investigation}/subjects', [Portal\InvestigationController::class, 'addSubject'])->name('investigations.subjects.add');
+        Route::post('/investigations/{investigation}/subjects/bulk', [Portal\InvestigationController::class, 'addSubjects'])->name('investigations.subjects.bulk');
+        Route::post('/investigations/subjects/preview', [Portal\InvestigationController::class, 'preview'])->name('investigations.subjects.preview');
+        Route::post('/investigations/{investigation}/bulk-actions', [Portal\InvestigationController::class, 'bulkAction'])->name('investigations.bulk-actions');
         Route::delete('/investigations/{investigation}/subjects/{subject}', [Portal\InvestigationController::class, 'removeSubject'])->name('investigations.subjects.remove');
         Route::post('/investigations/{investigation}/cases', [Portal\InvestigationController::class, 'attachCase'])->name('investigations.cases.attach');
         Route::delete('/investigations/{investigation}/cases/{case}', [Portal\InvestigationController::class, 'detachCase'])->name('investigations.cases.detach');

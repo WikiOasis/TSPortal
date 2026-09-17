@@ -139,6 +139,90 @@ final class InvestigationService
         return $subject;
     }
 
+    /**
+     * @param  list<string>  $usernames
+     * @return array{added: list<string>, skipped: list<array{name: string, why: string}>}
+     */
+    public function addSubjects(
+        Investigation $investigation,
+        array $usernames,
+        string $role = 'subject',
+        ?string $note = null,
+    ): array {
+        $investigation->loadMissing('subjects');
+
+        $already = $investigation->subjects->pluck('id')->all();
+
+        $added = [];
+        $skipped = [];
+        $seen = [];
+
+        foreach ($usernames as $username) {
+            $username = Subject::normalise((string) $username);
+
+            if ($username === '') {
+                continue;
+            }
+
+            $key = Subject::key($username);
+
+            if (isset($seen[$key])) {
+                $skipped[] = ['name' => $username, 'why' => 'Named twice in what was pasted.'];
+
+                continue;
+            }
+
+            $seen[$key] = true;
+
+            $subject = Subject::forUsername($username);
+
+            if (in_array($subject->id, $already, true)) {
+                $skipped[] = ['name' => $subject->username, 'why' => 'Already on the file.'];
+
+                continue;
+            }
+
+            $this->linkSubject($investigation, $subject, $role, $note);
+
+            $already[] = $subject->id;
+            $added[] = $subject->username;
+        }
+
+        if ($added !== []) {
+            Audit::log('investigation.subjects-added', $investigation, [
+                'subjects' => $added,
+                'role' => $role,
+                'skipped' => count($skipped),
+            ]);
+        }
+
+        return ['added' => $added, 'skipped' => $skipped];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function namesIn(string $text): array
+    {
+        $text = str_replace(["\r", '|', ';'], "\n", $text);
+
+        $names = [];
+
+        foreach (explode("\n", $text) as $line) {
+            $line = trim($line);
+            $line = preg_replace('/^[\*\#\-\x{2022}\s]+/u', '', $line) ?? $line;
+            $line = trim(str_replace(['[[', ']]'], '', $line));
+            $line = preg_replace('/^\s*(User talk|User|Special:Contributions)\s*[:\/]\s*/iu', '', $line) ?? $line;
+            $line = trim($line);
+
+            if ($line !== '') {
+                $names[] = $line;
+            }
+        }
+
+        return $names;
+    }
+
     public function removeSubject(Investigation $investigation, Subject $subject): void
     {
         $investigation->subjects()->detach($subject->id);

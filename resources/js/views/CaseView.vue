@@ -18,6 +18,14 @@
 					</cdx-button>
 
 					<cdx-button
+						v-if="!item.duplicate_of"
+						@click="showDuplicate = true"
+					>
+						<cdx-icon :icon="cdxIconCopy" size="small" />
+						Duplicate of…
+					</cdx-button>
+
+					<cdx-button
 						v-if="!item.investigation"
 						action="progressive"
 						weight="primary"
@@ -43,6 +51,43 @@
 				<strong>This report indicates a threat to life.</strong>
 				Please validate this reported threat to life, and contact emergency services
                 as appropriate with internal procedure.
+			</cdx-message>
+
+			<cdx-message v-if="item.duplicate_of" type="notice" :allow-user-dismiss="false">
+				<p>
+					Closed as a duplicate of
+					<router-link
+						:to="{ name: 'case', params: { id: item.duplicate_of.id } }"
+						class="ts-mono"
+					>
+						{{ item.duplicate_of.reference }}
+					</router-link>
+					— {{ item.duplicate_of.subject }}.
+					<template v-if="item.duplicate_of.marked_by">
+						Merged by {{ item.duplicate_of.marked_by }}, {{ ago( item.duplicate_of.marked_at ) }}.
+					</template>
+					Answer it there.
+				</p>
+				<p v-if="item.duplicate_of.note" class="ts-meta">{{ item.duplicate_of.note }}</p>
+				<cdx-button :disabled="unmerging" @click="unmerge">
+					{{ unmerging ? 'Undoing…' : 'Not a duplicate — reopen it' }}
+				</cdx-button>
+			</cdx-message>
+
+			<cdx-message
+				v-if="item.duplicates && item.duplicates.length"
+				type="notice"
+				:allow-user-dismiss="false"
+			>
+				{{ item.duplicates.length }} other report{{ item.duplicates.length === 1 ? ' was' : 's were' }}
+				merged into this one:
+				<template v-for="( d, i ) in item.duplicates" :key="d.id">
+					<template v-if="i">, </template>
+					<router-link :to="{ name: 'case', params: { id: d.id } }" class="ts-mono">
+						{{ d.reference }}
+					</router-link>
+				</template>.
+				Answering this one answers them all.
 			</cdx-message>
 
 			<cdx-message v-if="item.anonymous" type="notice" :allow-user-dismiss="true">
@@ -299,6 +344,12 @@
 				:subjects="fileSubjects"
 				@opened="onFileOpened"
 			/>
+
+			<MarkDuplicateDialog
+				v-model:open="showDuplicate"
+				:report="item"
+				@merged="onMerged"
+			/>
 		</template>
 		<cdx-dialog
 			v-model:open="editingCategories"
@@ -331,7 +382,7 @@ import {
 	CdxButton, CdxDialog, CdxField, CdxIcon, CdxInfoChip, CdxMessage, CdxProgressBar,
 	CdxSelect, CdxTextArea
 } from '@wikimedia/codex';
-import { cdxIconAdd } from '@wikimedia/codex-icons';
+import { cdxIconAdd, cdxIconCopy } from '@wikimedia/codex-icons';
 import PageHeader from '../components/PageHeader.vue';
 import LoadError from '../components/LoadError.vue';
 import StatusChip from '../components/StatusChip.vue';
@@ -339,6 +390,7 @@ import CaseTimeline from '../components/CaseTimeline.vue';
 import DataRequestPanel from '../components/DataRequestPanel.vue';
 import AppealPanel from '../components/AppealPanel.vue';
 import OpenInvestigationDialog from '../components/OpenInvestigationDialog.vue';
+import MarkDuplicateDialog from '../components/MarkDuplicateDialog.vue';
 import { api } from '../lib/api.js';
 import { remember } from '../lib/recents.js';
 import { ago, dateTime, fileSize, PRIORITIES, TYPE_LABELS } from '../lib/format.js';
@@ -360,20 +412,30 @@ const statusDraft = ref( null );
 const assigneeDraft = ref( null );
 const priorityDraft = ref( null );
 const showOpenFile = ref( false );
+const showDuplicate = ref( false );
+const unmerging = ref( false );
 const team = ref( [] );
 const editingCategories = ref( false );
 const savingCategories = ref( false );
 
 const categoryText = ref( '' );
 
-const statusOptions = [
-	{ value: 'received', label: 'Received' },
-	{ value: 'in-review', label: 'Being read' },
-	{ value: 'investigating', label: 'Under investigation' },
-	{ value: 'action-taken', label: 'Action taken' },
-	{ value: 'closed', label: 'Closed' },
-	{ value: 'rejected', label: 'Closed, no action' }
-];
+const statusOptions = computed( () => {
+	const options = [
+		{ value: 'received', label: 'Received' },
+		{ value: 'in-review', label: 'Being read' },
+		{ value: 'investigating', label: 'Under investigation' },
+		{ value: 'action-taken', label: 'Action taken' },
+		{ value: 'closed', label: 'Closed' },
+		{ value: 'rejected', label: 'Closed, no action' }
+	];
+
+	if ( item.value?.status === 'duplicate' ) {
+		options.push( { value: 'duplicate', label: 'Duplicate', disabled: true } );
+	}
+
+	return options;
+} );
 
 const priorityOptions = PRIORITIES;
 
@@ -544,6 +606,25 @@ function changeAssignee( value ) {
 
 function onFileOpened( investigation ) {
 	router.push( { name: 'investigation', params: { id: investigation.id } } );
+}
+
+function onMerged( response ) {
+	adopt( response.case.data ?? response.case );
+	loadTimeline();
+}
+
+async function unmerge() {
+	unmerging.value = true;
+	try {
+		const response = await api.undoDuplicate( props.id, { status: 'in-review' } );
+		adopt( response.case.data ?? response.case );
+		loadTimeline();
+		notify( 'Taken back out of the merge and reopened.' );
+	} catch ( e ) {
+		notify( e.message, 'error' );
+	} finally {
+		unmerging.value = false;
+	}
 }
 
 async function postComment( visibility ) {

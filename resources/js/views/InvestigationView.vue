@@ -18,6 +18,16 @@
 						Take an action
 					</cdx-button>
 
+					<cdx-button
+						v-if="item.live"
+						action="destructive"
+						:disabled="!item.subjects.length"
+						@click="openBulk( 'action' )"
+					>
+						<cdx-icon :icon="cdxIconUserGroup" size="small" />
+						Act on several
+					</cdx-button>
+
 					<cdx-button v-if="item.live" action="progressive" @click="showConclude = true">
 						<cdx-icon :icon="cdxIconCheck" size="small" />
 						Conclude
@@ -138,13 +148,19 @@
 								Nothing has been done yet.
 							</p>
 
-							<cdx-button
-								v-if="item.live"
-								action="destructive"
-								@click="showIssue = true"
-							>
-								Take an action
-							</cdx-button>
+							<div v-if="item.live" class="ts-inline">
+								<cdx-button action="destructive" @click="showIssue = true">
+									Take an action
+								</cdx-button>
+								<cdx-button
+									action="destructive"
+									:disabled="!item.subjects.length"
+									@click="openBulk( 'action' )"
+								>
+									<cdx-icon :icon="cdxIconUserGroup" size="small" />
+									Act on several at once
+								</cdx-button>
+							</div>
 
 							<div v-for="s in item.sanctions" :key="s.id" class="ts-row">
 								<div>
@@ -179,9 +195,14 @@
 						</div>
 					</section>
 
-					<section v-if="item.removals.length" class="ts-section">
+					<section class="ts-section">
 						<h2 class="ts-section__title">Erasures</h2>
 						<div class="ts-panel ts-stack">
+							<p v-if="!item.removals.length" class="ts-meta">
+								Nothing has been erased under this file. Erasing an account's personal
+								data cannot be undone.
+							</p>
+
 							<div v-for="r in item.removals" :key="r.id" class="ts-row">
 								<div>
 									<router-link :to="{ name: 'data-removals' }" class="ts-mono">{{ r.reference }}</router-link>
@@ -189,6 +210,16 @@
 								</div>
 								<StatusChip kind="removal" :value="r.state" />
 							</div>
+
+							<cdx-button
+								v-if="item.live"
+								action="destructive"
+								:disabled="!item.subjects.length"
+								@click="openBulk( 'erasure' )"
+							>
+								<cdx-icon :icon="cdxIconTrash" size="small" />
+								Erase accounts on this file
+							</cdx-button>
 						</div>
 					</section>
 				</div>
@@ -288,6 +319,10 @@
 							>
 								Add
 							</cdx-button>
+							<cdx-button @click="showAddSubjects = true">
+								<cdx-icon :icon="cdxIconUserAdd" size="small" />
+								Paste a list
+							</cdx-button>
 						</div>
 					</div>
 				</aside>
@@ -298,6 +333,19 @@
 				:accounts="actionable"
 				:investigation="item"
 				@issued="onIssued"
+			/>
+
+			<BulkActionDialog
+				v-model:open="showBulk"
+				:investigation="item"
+				:kind="bulkKind"
+				@done="onBulkDone"
+			/>
+
+			<AddSubjectsDialog
+				v-model:open="showAddSubjects"
+				:investigation-id="item.id"
+				@added="onSubjectsAdded"
 			/>
 
 			<cdx-dialog
@@ -366,12 +414,16 @@ import {
 	CdxButton, CdxCheckbox, CdxDialog, CdxField, CdxIcon, CdxInfoChip,
 	CdxMessage, CdxProgressBar, CdxSelect, CdxTextArea, CdxTextInput
 } from '@wikimedia/codex';
-import { cdxIconBlock, cdxIconCheck, cdxIconClose, cdxIconEyeClosed } from '@wikimedia/codex-icons';
+import {
+	cdxIconBlock, cdxIconCheck, cdxIconClose, cdxIconTrash, cdxIconUserAdd, cdxIconUserGroup
+} from '@wikimedia/codex-icons';
 import PageHeader from '../components/PageHeader.vue';
 import LoadError from '../components/LoadError.vue';
 import StatusChip from '../components/StatusChip.vue';
 import CaseTimeline from '../components/CaseTimeline.vue';
 import IssueActionDialog from '../components/IssueActionDialog.vue';
+import BulkActionDialog from '../components/BulkActionDialog.vue';
+import AddSubjectsDialog from '../components/AddSubjectsDialog.vue';
 import { api } from '../lib/api.js';
 import { remember } from '../lib/recents.js';
 import {
@@ -402,6 +454,9 @@ const attachRef = ref( '' );
 const attaching = ref( false );
 
 const showIssue = ref( false );
+const showBulk = ref( false );
+const bulkKind = ref( 'action' );
+const showAddSubjects = ref( false );
 const showConclude = ref( false );
 const conclusion = reactive( {
 	outcome: null,
@@ -439,6 +494,20 @@ const actionable = computed( () => item.value?.subjects ?? [] );
 
 async function onIssued() {
 	await load();
+}
+
+function openBulk( kind ) {
+	bulkKind.value = kind;
+	showBulk.value = true;
+}
+
+async function onBulkDone() {
+	await load();
+}
+
+function onSubjectsAdded( response ) {
+	adopt( response.data.data ?? response.data );
+	loadTimeline();
 }
 
 function adopt( data ) {

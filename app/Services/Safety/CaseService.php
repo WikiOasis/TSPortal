@@ -186,11 +186,17 @@ final class CaseService
         }
 
         $case->status = $status;
-        $case->closed_at = in_array($status, [SafetyCase::STATUS_CLOSED, SafetyCase::STATUS_REJECTED], true)
-            ? now()
-            : null;
+        $case->closed_at = in_array($status, SafetyCase::CLOSED_STATUSES, true) ? now() : null;
         if ($note !== null) {
             $case->resolution = $note;
+        }
+        if ($status !== SafetyCase::STATUS_DUPLICATE && $case->duplicate_of_id !== null) {
+            $case->forceFill([
+                'duplicate_of_id' => null,
+                'duplicate_note' => null,
+                'duplicate_marked_by' => null,
+                'duplicate_marked_at' => null,
+            ]);
         }
         $case->save();
 
@@ -208,13 +214,13 @@ final class CaseService
     {
         $this->comment(
             $case,
-            $this->statusSentence($from, $to, $staff),
+            $this->statusSentence($case, $from, $to, $staff),
             $case->anonymous ? CaseComment::VISIBILITY_INTERNAL : CaseComment::VISIBILITY_PUBLIC,
             $staff,
         );
     }
 
-    private function statusSentence(?string $from, string $to, ?User $staff): string
+    private function statusSentence(SafetyCase $case, ?string $from, string $to, ?User $staff): string
     {
         $sentence = match ($to) {
             SafetyCase::STATUS_RECEIVED => 'Status changed to received.',
@@ -223,6 +229,8 @@ final class CaseService
             SafetyCase::STATUS_ACTION_TAKEN => 'Status changed to action taken.',
             SafetyCase::STATUS_CLOSED => 'Status changed to closed.',
             SafetyCase::STATUS_REJECTED => 'Status changed to rejected.',
+            SafetyCase::STATUS_DUPLICATE => 'Closed as a duplicate. What was reported here is already being '
+                .'dealt with under an earlier report.',
             default => sprintf('Status changed to %s.', str_replace('-', ' ', strtolower($to))),
         };
 

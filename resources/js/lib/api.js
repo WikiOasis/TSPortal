@@ -66,6 +66,10 @@ export const api = {
 	commentOnCase: ( id, body ) => request( 'POST', `/portal/cases/${ id }/comments`, body ),
 	caseTimeline: ( id ) => request( 'GET', `/portal/cases/${ id }/timeline` ),
 
+	duplicateCandidates: ( id ) => request( 'GET', `/portal/cases/${ id }/duplicates/candidates` ),
+	markDuplicate: ( id, body ) => request( 'POST', `/portal/cases/${ id }/duplicate`, body ),
+	undoDuplicate: ( id, body ) => request( 'DELETE', `/portal/cases/${ id }/duplicate`, body ),
+
 	setDataKind: ( id, body ) => request( 'PATCH', `/portal/cases/${ id }/data-request`, body ),
 	linkAppealAction: ( id, reference ) => request( 'PUT', `/portal/cases/${ id }/appeal/action`, { reference } ),
 	decideAppeal: ( id, body ) => request( 'POST', `/portal/cases/${ id }/appeal/decision`, body ),
@@ -80,6 +84,9 @@ export const api = {
 	investigationTimeline: ( id ) => request( 'GET', `/portal/investigations/${ id }/timeline` ),
 	addInvestigationNote: ( id, body ) => request( 'POST', `/portal/investigations/${ id }/notes`, body ),
 	addInvestigationSubject: ( id, body ) => request( 'POST', `/portal/investigations/${ id }/subjects`, body ),
+	addInvestigationSubjects: ( id, body ) => request( 'POST', `/portal/investigations/${ id }/subjects/bulk`, body ),
+	previewSubjectNames: ( text, options ) => request( 'POST', '/portal/investigations/subjects/preview', { text }, options ),
+	bulkInvestigationAction: ( id, body ) => request( 'POST', `/portal/investigations/${ id }/bulk-actions`, body ),
 	removeInvestigationSubject: ( id, subjectId ) => request( 'DELETE', `/portal/investigations/${ id }/subjects/${ subjectId }` ),
 	attachCase: ( id, body ) => request( 'POST', `/portal/investigations/${ id }/cases`, body ),
 	detachCase: ( id, caseId ) => request( 'DELETE', `/portal/investigations/${ id }/cases/${ caseId }` ),

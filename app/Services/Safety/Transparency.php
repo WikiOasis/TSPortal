@@ -161,6 +161,7 @@ final class Transparency
                     SafetyCase::STATUS_ACTION_TAKEN => 'Action taken',
                     SafetyCase::STATUS_REJECTED => 'Looked into, no action taken',
                     SafetyCase::STATUS_CLOSED => 'Closed',
+                    SafetyCase::STATUS_DUPLICATE => 'Merged with another report',
                     default => ucfirst(str_replace('-', ' ', (string) $key)),
                 }
             ),

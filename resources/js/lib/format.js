@@ -48,7 +48,8 @@ export const STATUS_LABELS = {
 	investigating: 'Under investigation',
 	'action-taken': 'Action taken',
 	closed: 'Closed',
-	rejected: 'Closed, no action'
+	rejected: 'Closed, no action',
+	duplicate: 'Duplicate'
 };
 
 export const STATUS_CHIP = {
@@ -57,7 +58,8 @@ export const STATUS_CHIP = {
 	investigating: 'notice',
 	'action-taken': 'success',
 	closed: 'notice',
-	rejected: 'notice'
+	rejected: 'notice',
+	duplicate: 'notice'
 };
 
 export const TYPE_LABELS = {
@@ -93,6 +95,7 @@ export const TIMELINE_KINDS = {
 	note: { label: 'Note', tone: 'internal' },
 	case: { label: 'Report', tone: 'neutral' },
 	'data-removal': { label: 'Erasure', tone: 'action' },
+	duplicate: { label: 'Duplicate', tone: 'internal' },
 	concluded: { label: 'Concluded', tone: 'action' }
 };
 
@@ -178,6 +181,11 @@ export const OUTCOMES = [
 	{ value: 'unfounded', label: 'Looked into it; not borne out' },
 	{ value: 'insufficient-evidence', label: 'Looked into it; not enough to act on' },
 	{ value: 'referred', label: 'Referred on to someone else' }
+];
+
+export const BULK_KINDS = [
+	{ value: 'action', label: 'Take an action against each' },
+	{ value: 'erasure', label: 'Erase each account\u2019s personal data' }
 ];
 
 export const NOTE_KINDS = [

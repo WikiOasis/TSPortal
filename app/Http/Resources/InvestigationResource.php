@@ -51,6 +51,7 @@ class InvestigationResource extends JsonResource
                 'standing' => $s->standing,
                 'banned' => $s->banned,
                 'unresolved' => $s->mw_central_id === null,
+                'erased' => $s->isErased(),
                 'role' => $s->pivot->role,
                 'note' => $s->pivot->note,
             ])->all()),

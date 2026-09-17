@@ -9,8 +9,10 @@ use App\Http\Resources\InvestigationResource;
 use App\Models\Investigation;
 use App\Models\InvestigationNote;
 use App\Models\SafetyCase;
+use App\Models\Sanction;
 use App\Models\Subject;
 use App\Models\User;
+use App\Services\Safety\BulkActions;
 use App\Services\Safety\InvestigationService;
 use App\Services\Safety\Timeline;
 use Illuminate\Database\Eloquent\Builder;
@@ -23,6 +25,7 @@ class InvestigationController extends Controller
     public function __construct(
         private readonly InvestigationService $investigations,
         private readonly Timeline $timeline,
+        private readonly BulkActions $bulk,
     ) {}
 
     public function index(Request $request): AnonymousResourceCollection
@@ -217,6 +220,104 @@ class InvestigationController extends Controller
         );
 
         return $this->show($investigation->refresh());
+    }
+
+    public function addSubjects(Request $request, Investigation $investigation): JsonResponse
+    {
+        $data = $request->validate([
+            'usernames' => ['nullable', 'array', 'max:500'],
+            'usernames.*' => ['string', 'max:255'],
+            'text' => ['nullable', 'string', 'max:50000'],
+            'role' => ['nullable', 'string', 'in:subject,witness,reporter,related'],
+            'note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $names = array_merge(
+            array_map('strval', (array) ($data['usernames'] ?? [])),
+            InvestigationService::namesIn((string) ($data['text'] ?? '')),
+        );
+
+        if ($names === []) {
+            return response()->json([
+                'error' => 'nothing-named',
+                'message' => 'No account names were found in that.',
+            ], 422);
+        }
+
+        if (count($names) > 500) {
+            return response()->json([
+                'error' => 'too-many',
+                'message' => 'That is more than 500 names. Do it in smaller batches.',
+            ], 422);
+        }
+
+        $report = $this->investigations->addSubjects(
+            $investigation,
+            $names,
+            $data['role'] ?? 'subject',
+            $data['note'] ?? null,
+        );
+
+        return response()->json([
+            'added' => $report['added'],
+            'skipped' => $report['skipped'],
+            'data' => $this->show($investigation->refresh()),
+        ]);
+    }
+
+    public function preview(Request $request): JsonResponse
+    {
+        $data = $request->validate(['text' => ['required', 'string', 'max:50000']]);
+
+        return response()->json(['data' => InvestigationService::namesIn($data['text'])]);
+    }
+
+    public function bulkAction(Request $request, Investigation $investigation): JsonResponse
+    {
+        $data = $request->validate([
+            'kind' => ['required', 'string', 'in:'.implode(',', BulkActions::KINDS)],
+
+            'subject_ids' => ['required', 'array', 'min:1', 'max:200'],
+            'subject_ids.*' => ['integer'],
+
+            'reason' => ['required', 'string', 'min:1', 'max:20000'],
+
+            'type' => ['nullable', 'string', 'in:'.implode(',', Sanction::TYPES), 'required_if:kind,action'],
+            'label' => ['nullable', 'string', 'max:120', 'required_if:type,other'],
+            'scope' => ['nullable', 'string', 'max:255'],
+            'wikis' => ['nullable', 'array', 'max:1000'],
+            'wikis.*' => ['string', 'max:64'],
+            'internal_reason' => ['nullable', 'string', 'max:20000'],
+            'reason_category' => [
+                'nullable',
+                'string',
+                'in:'.implode(',', array_keys((array) config('categories.action_reasons', []))),
+            ],
+            'expires_at' => ['nullable', 'date', 'after:now'],
+            'appealable' => ['nullable', 'boolean'],
+            'case_reference' => ['nullable', 'string', 'max:32'],
+
+            'legal_basis' => ['nullable', 'string', 'max:32'],
+            'hold' => ['nullable', 'boolean'],
+        ]);
+
+        $needsAdmin = $data['kind'] === BulkActions::KIND_ACTION
+            && in_array($data['type'] ?? '', [Sanction::TYPE_LOCK, Sanction::TYPE_WIKI_DELETION], true);
+
+        if ($needsAdmin && ! $request->user()->hasFlag(User::FLAG_ADMIN)) {
+            return response()->json([
+                'error' => 'missing-flag',
+                'message' => 'Suspending accounts needs the admin flag.',
+            ], 403);
+        }
+
+        try {
+            $outcome = $this->bulk->run($investigation, $request->user(), $data);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['error' => 'not-actionable', 'message' => $e->getMessage()], 422);
+        }
+
+        return response()->json($outcome + ['data' => $this->show($investigation->refresh())]);
     }
 
     public function removeSubject(Investigation $investigation, Subject $subject): InvestigationResource

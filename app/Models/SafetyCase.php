@@ -100,6 +100,8 @@ class SafetyCase extends Model
 
     public const STATUS_REJECTED = 'rejected';
 
+    public const STATUS_DUPLICATE = 'duplicate';
+
     public const STATUSES = [
         self::STATUS_RECEIVED,
         self::STATUS_IN_REVIEW,
@@ -107,9 +109,12 @@ class SafetyCase extends Model
         self::STATUS_ACTION_TAKEN,
         self::STATUS_CLOSED,
         self::STATUS_REJECTED,
+        self::STATUS_DUPLICATE,
     ];
 
     public const OPEN_STATUSES = [self::STATUS_RECEIVED, self::STATUS_IN_REVIEW, self::STATUS_INVESTIGATING];
+
+    public const CLOSED_STATUSES = [self::STATUS_CLOSED, self::STATUS_REJECTED, self::STATUS_DUPLICATE];
 
     public const PRIORITY_URGENT = 'urgent';
 
@@ -159,6 +164,10 @@ class SafetyCase extends Model
         'appeal_decided_at',
         'closed_at',
         'resolution',
+        'duplicate_of_id',
+        'duplicate_note',
+        'duplicate_marked_by',
+        'duplicate_marked_at',
     ];
 
     protected $attributes = [
@@ -179,6 +188,7 @@ class SafetyCase extends Model
             'synced_at' => 'datetime',
             'data_decided_at' => 'datetime',
             'appeal_decided_at' => 'datetime',
+            'duplicate_marked_at' => 'datetime',
             'appeal_link_notes' => 'array',
         ];
     }
@@ -211,6 +221,21 @@ class SafetyCase extends Model
     public function investigation(): BelongsTo
     {
         return $this->belongsTo(Investigation::class);
+    }
+
+    public function duplicateOf(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'duplicate_of_id');
+    }
+
+    public function duplicates(): HasMany
+    {
+        return $this->hasMany(self::class, 'duplicate_of_id');
+    }
+
+    public function duplicateMarker(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'duplicate_marked_by');
     }
 
     public function subjects(): BelongsToMany
@@ -248,6 +273,16 @@ class SafetyCase extends Model
     public function isOpen(): bool
     {
         return in_array($this->status, self::OPEN_STATUSES, true);
+    }
+
+    public function isDuplicate(): bool
+    {
+        return $this->status === self::STATUS_DUPLICATE || $this->duplicate_of_id !== null;
+    }
+
+    public function scopeDuplicates(Builder $query): Builder
+    {
+        return $query->where('status', self::STATUS_DUPLICATE);
     }
 
     public function isThreatToLife(): bool

@@ -50,6 +50,7 @@ class CaseUpdatedMail extends Mailable
             SafetyCase::STATUS_IN_REVIEW => 'Being looked at',
             SafetyCase::STATUS_ACTION_TAKEN => 'Action taken',
             SafetyCase::STATUS_REJECTED => 'Closed with no action',
+            SafetyCase::STATUS_DUPLICATE => 'Closed as a duplicate',
             default => 'Closed',
         };
     }

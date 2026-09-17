@@ -44,6 +44,26 @@ class CaseResource extends JsonResource
 
             'threat_to_life' => $this->isThreatToLife(),
 
+            'duplicate_of' => $this->whenLoaded('duplicateOf', fn () => $this->duplicateOf === null ? null : [
+                'id' => $this->duplicateOf->id,
+                'reference' => $this->duplicateOf->reference,
+                'subject' => $this->duplicateOf->subject_line,
+                'status' => $this->duplicateOf->status,
+                'note' => $this->duplicate_note,
+                'marked_by' => $this->whenLoaded('duplicateMarker', fn () => $this->duplicateMarker?->username),
+                'marked_at' => $this->duplicate_marked_at?->toIso8601String(),
+            ]),
+
+            'duplicates' => $this->whenLoaded('duplicates', fn () => $this->duplicates->map(fn (SafetyCase $d) => [
+                'id' => $d->id,
+                'reference' => $d->reference,
+                'subject' => $d->subject_line,
+                'status' => $d->status,
+                'anonymous' => $d->anonymous,
+                'note' => $d->duplicate_note,
+                'merged_at' => $d->duplicate_marked_at?->toIso8601String(),
+            ])->all()),
+
             'filed' => $this->created_at?->toIso8601String(),
             'updated' => $this->updated_at?->toIso8601String(),
             'closed' => $this->closed_at?->toIso8601String(),

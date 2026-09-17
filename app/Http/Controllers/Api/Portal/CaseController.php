@@ -10,6 +10,7 @@ use App\Models\SafetyCase;
 use App\Models\User;
 use App\Services\Safety\CaseSearch;
 use App\Services\Safety\CaseService;
+use App\Services\Safety\DuplicateReports;
 use App\Services\Safety\Timeline;
 use App\Services\Safety\Triage;
 use Illuminate\Database\Eloquent\Builder;
@@ -22,6 +23,7 @@ class CaseController extends Controller
     public function __construct(
         private readonly CaseService $cases,
         private readonly CaseSearch $search,
+        private readonly DuplicateReports $duplicates,
     ) {}
 
     public function index(Request $request): AnonymousResourceCollection
@@ -99,6 +101,9 @@ class CaseController extends Controller
             'assignee',
             'decider',
             'investigation',
+            'duplicateOf',
+            'duplicateMarker',
+            'duplicates' => fn ($q) => $q->orderBy('created_at'),
             'categories',
             'subjects',
             'attachments',
@@ -115,6 +120,79 @@ class CaseController extends Controller
         }
 
         return new CaseResource($case);
+    }
+
+    public function markDuplicate(Request $request, SafetyCase $case): JsonResponse
+    {
+        $data = $request->validate([
+            'of_id' => ['nullable', 'integer', 'exists:cases,id'],
+            'of' => ['nullable', 'string', 'max:32'],
+            'note' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        $canonical = isset($data['of_id'])
+            ? SafetyCase::find($data['of_id'])
+            : (! empty($data['of'])
+                ? SafetyCase::query()->where('reference', trim($data['of']))->first()
+                : null);
+
+        if ($canonical === null) {
+            return response()->json([
+                'error' => 'no-such-report',
+                'message' => empty($data['of'])
+                    ? 'Say which report this duplicates.'
+                    : sprintf('There is no report numbered %s.', trim((string) $data['of'])),
+            ], 422);
+        }
+
+        try {
+            $this->duplicates->merge($case, $canonical, $request->user(), $data['note'] ?? null);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['error' => 'not-a-duplicate', 'message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'of' => $canonical->reference,
+            'of_id' => $canonical->id,
+            'case' => $this->show($case->refresh()),
+        ]);
+    }
+
+    public function undoDuplicate(Request $request, SafetyCase $case): JsonResponse
+    {
+        $data = $request->validate([
+            'status' => ['nullable', 'string', 'in:'.implode(',', SafetyCase::OPEN_STATUSES)],
+        ]);
+
+        try {
+            $this->duplicates->unmerge($case, $request->user(), $data['status'] ?? null);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['error' => 'not-a-duplicate', 'message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'case' => $this->show($case->refresh()),
+        ]);
+    }
+
+    public function duplicateCandidates(SafetyCase $case): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->duplicates->candidatesFor($case)->map(fn (SafetyCase $other) => [
+                'id' => $other->id,
+                'reference' => $other->reference,
+                'subject' => $other->subject_line,
+                'status' => $other->status,
+                'type' => $other->type,
+                'filed' => $other->created_at?->toIso8601String(),
+                'anonymous' => $other->anonymous,
+                'assignee' => $other->assignee?->username,
+                'accounts' => $other->subjects->pluck('username')->all(),
+                'because' => $other->getAttribute('duplicate_because'),
+            ])->all(),
+        ]);
     }
 
     public function timeline(SafetyCase $case, Timeline $timeline): JsonResponse
@@ -139,7 +217,11 @@ class CaseController extends Controller
     public function update(Request $request, SafetyCase $case): CaseResource
     {
         $data = $request->validate([
-            'status' => ['nullable', 'string', 'in:'.implode(',', SafetyCase::STATUSES)],
+            'status' => [
+                'nullable',
+                'string',
+                'in:'.implode(',', array_diff(SafetyCase::STATUSES, [SafetyCase::STATUS_DUPLICATE])),
+            ],
             'priority' => ['nullable', 'string', 'in:'.implode(',', SafetyCase::PRIORITIES)],
             'assigned_to' => ['nullable', 'integer', 'exists:users,id'],
             'resolution' => ['nullable', 'string', 'max:5000'],

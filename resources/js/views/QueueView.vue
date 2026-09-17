@@ -298,7 +298,8 @@ const statusOptions = [
 	{ value: 'in-review', label: 'Being read' },
 	{ value: 'investigating', label: 'Under investigation' },
 	{ value: 'action-taken', label: 'Action taken' },
-	{ value: 'closed,rejected', label: 'Closed' }
+	{ value: 'closed,rejected', label: 'Closed' },
+	{ value: 'duplicate', label: 'Duplicates' }
 ];
 
 const rowStatusOptions = [
@@ -307,10 +308,14 @@ const rowStatusOptions = [
 	{ value: 'investigating', label: 'Under investigation' },
 	{ value: 'action-taken', label: 'Action taken' },
 	{ value: 'closed', label: 'Closed' },
-	{ value: 'rejected', label: 'Closed, no action' }
+	{ value: 'rejected', label: 'Closed, no action' },
+	{ value: 'duplicate', label: 'Duplicate', disabled: true }
 ];
 
-const bulkStatusOptions = [ { value: null, label: 'Set status…' }, ...rowStatusOptions ];
+const bulkStatusOptions = [
+	{ value: null, label: 'Set status…' },
+	...rowStatusOptions.filter( ( o ) => o.value !== 'duplicate' )
+];
 
 const priorityOptions = PRIORITIES;
 

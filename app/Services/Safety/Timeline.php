@@ -22,6 +22,8 @@ final class Timeline
         'investigation.note',
         'investigation.opened',
         'data-removal.requested',
+        'case.duplicate-merged',
+        'case.duplicate-received',
     ];
 
     /**
@@ -29,7 +31,11 @@ final class Timeline
      */
     public function forCase(SafetyCase $case): array
     {
-        $case->loadMissing(['comments.author', 'assignee', 'reporter', 'investigation', 'sanctionsIssued.subject', 'sanctionsIssued.issuer', 'sanctionsIssued.lifter']);
+        $case->loadMissing([
+            'comments.author', 'assignee', 'reporter', 'investigation',
+            'sanctionsIssued.subject', 'sanctionsIssued.issuer', 'sanctionsIssued.lifter',
+            'duplicateOf', 'duplicateMarker', 'duplicates',
+        ]);
 
         $entries = collect();
 
@@ -70,11 +76,57 @@ final class Timeline
             ]);
         }
 
+        foreach ($this->fromDuplicates($case) as $entry) {
+            $entries->push($entry);
+        }
+
         foreach ($this->auditFor('SafetyCase', $case->id) as $entry) {
             $entries->push($entry);
         }
 
         return $this->order($entries);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function fromDuplicates(SafetyCase $case): array
+    {
+        $entries = [];
+
+        if ($case->duplicateOf !== null) {
+            $entries[] = [
+                'at' => $case->duplicate_marked_at?->toIso8601String(),
+                'kind' => 'duplicate',
+                'actor' => $case->duplicateMarker?->username,
+                'title' => sprintf('Merged into %s as a duplicate', $case->duplicateOf->reference),
+                'body' => $case->duplicate_note,
+                'visibility' => 'internal',
+                'link' => ['route' => 'case', 'id' => $case->duplicateOf->id],
+                'meta' => [
+                    'reference' => $case->duplicateOf->reference,
+                    'direction' => 'into',
+                ],
+            ];
+        }
+
+        foreach ($case->duplicates as $duplicate) {
+            $entries[] = [
+                'at' => $duplicate->duplicate_marked_at?->toIso8601String(),
+                'kind' => 'duplicate',
+                'actor' => null,
+                'title' => sprintf('%s merged in as a duplicate of this', $duplicate->reference),
+                'body' => $duplicate->duplicate_note,
+                'visibility' => 'internal',
+                'link' => ['route' => 'case', 'id' => $duplicate->id],
+                'meta' => [
+                    'reference' => $duplicate->reference,
+                    'direction' => 'in',
+                ],
+            ];
+        }
+
+        return $entries;
     }
 
     /**
@@ -296,6 +348,17 @@ final class Timeline
                 ? sprintf('Assigned to %s', $meta['assignee'])
                 : 'Unassigned',
             'case.priority' => sprintf('Priority set to %s', $meta['to'] ?? '?'),
+            'case.duplicate-merged' => sprintf(
+                'Closed as a duplicate of %s',
+                $meta['of'] ?? 'another report',
+            ),
+            'case.duplicate-received' => sprintf(
+                '%s merged in as a duplicate of this',
+                $meta['case'] ?? 'Another report',
+            ),
+            'case.duplicate-unmerged' => isset($meta['was']) && $meta['was'] !== null
+                ? sprintf('Taken back out of %s; it is not a duplicate after all', $meta['was'])
+                : 'No longer marked as a duplicate',
             'investigation.status' => sprintf(
                 'File moved from %s to %s',
                 $meta['from'] ?? '?',
@@ -312,6 +375,12 @@ final class Timeline
                 $meta['role'] ?? 'subject',
             ),
             'investigation.subject-removed' => sprintf('%s taken off the file', $meta['subject'] ?? 'An account'),
+            'investigation.subjects-added' => sprintf(
+                '%d account%s named on the file at once',
+                count((array) ($meta['subjects'] ?? [])),
+                count((array) ($meta['subjects'] ?? [])) === 1 ? '' : 's',
+            ),
+            'investigation.bulk-action' => self::bulkTitle($meta),
             'investigation.concluded' => 'Concluded',
             'investigation.closed' => 'Closed',
             'sanction.lifted' => 'Action lifted',
@@ -323,6 +392,27 @@ final class Timeline
             'data-removal.failed' => 'Data removal could not be completed',
             default => $log->action,
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     */
+    private static function bulkTitle(array $meta): string
+    {
+        $done = (int) ($meta['done'] ?? 0);
+        $failed = (int) ($meta['failed'] ?? 0);
+
+        $what = ($meta['kind'] ?? null) === 'erasure'
+            ? 'erasure'
+            : str_replace('-', ' ', (string) ($meta['type'] ?? 'action'));
+
+        return sprintf(
+            '%d %s%s taken against accounts at once%s',
+            $done,
+            $what,
+            $done === 1 ? '' : 's',
+            $failed > 0 ? sprintf(' (%d could not be done)', $failed) : '',
+        );
     }
 
     private function noteTitle(InvestigationNote $note): string
