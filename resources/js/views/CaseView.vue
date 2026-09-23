@@ -53,6 +53,11 @@
                 as appropriate with internal procedure.
 			</cdx-message>
 
+			<cdx-message v-if="item.automated" type="notice" :allow-user-dismiss="false">
+				Raised by automated scanning, not filed by a person. Check what was flagged
+				before acting on it.
+			</cdx-message>
+
 			<cdx-message v-if="item.duplicate_of" type="notice" :allow-user-dismiss="false">
 				<p>
 					Closed as a duplicate of

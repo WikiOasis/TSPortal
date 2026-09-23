@@ -18,11 +18,25 @@ final class Analytics
 {
     public const BUCKETS = ['day', 'week', 'month'];
 
+    public const SOURCE_PEOPLE = 'people';
+
+    public const SOURCE_AUTOMATED = 'automated';
+
+    public const SOURCES = [self::SOURCE_PEOPLE, self::SOURCE_AUTOMATED];
+
+    private ?string $source = null;
+
     /**
      * @return array<string, mixed>
      */
-    public function overview(CarbonImmutable $from, CarbonImmutable $to, ?string $wiki = null): array
-    {
+    public function overview(
+        CarbonImmutable $from,
+        CarbonImmutable $to,
+        ?string $wiki = null,
+        ?string $source = null,
+    ): array {
+        $this->source = in_array($source, self::SOURCES, true) ? $source : null;
+
         $bucket = $this->bucketFor($from, $to);
         [$prevFrom, $prevTo] = $this->previous($from, $to);
 
@@ -33,6 +47,7 @@ final class Analytics
                 'days' => $this->daysInclusive($from, $to),
                 'bucket' => $bucket,
                 'wiki' => $wiki,
+                'source' => $this->source,
             ],
 
             'headline' => $this->headline($from, $to, $prevFrom, $prevTo, $wiki),
@@ -45,6 +60,7 @@ final class Analytics
                 'by_category' => $this->byCategory($from, $to, $wiki),
                 'by_group' => $this->countBy($this->cases($from, $to, $wiki), 'category_group'),
                 'by_wiki' => $this->countBy($this->cases($from, $to, $wiki), 'wiki', 12),
+                'by_source' => $this->bySource($from, $to, $wiki),
             ],
 
             'handling' => [
@@ -121,6 +137,7 @@ final class Analytics
             ->join('cases', 'cases.id', '=', 'case_categories.case_id')
             ->whereBetween('cases.created_at', [$from, $to])
             ->when($wiki !== null, fn ($q) => $q->where('cases.wiki', $wiki))
+            ->when($this->source !== null, fn ($q) => $q->where('cases.automated', $this->source === self::SOURCE_AUTOMATED))
             ->groupBy('case_categories.category', 'case_categories.label', 'case_categories.group')
             ->orderByDesc(DB::raw('count(*)'))
             ->get([
@@ -214,6 +231,7 @@ final class Analytics
             ->whereBetween('closed_at', [$from, $to])
             ->whereNotNull('closed_at')
             ->when($wiki !== null, fn (Builder $q) => $q->where('wiki', $wiki))
+            ->tap(fn (Builder $q) => $this->fromSource($q))
             ->get(['created_at', 'closed_at']);
 
         $hours = $rows
@@ -236,7 +254,8 @@ final class Analytics
     {
         $open = SafetyCase::query()
             ->whereIn('status', SafetyCase::OPEN_STATUSES)
-            ->when($wiki !== null, fn (Builder $q) => $q->where('wiki', $wiki));
+            ->when($wiki !== null, fn (Builder $q) => $q->where('wiki', $wiki))
+            ->tap(fn (Builder $q) => $this->fromSource($q));
 
         $now = CarbonImmutable::now();
         $bands = [
@@ -481,7 +500,39 @@ final class Analytics
     ): Builder {
         return SafetyCase::query()
             ->whereBetween($column, [$from, $to])
-            ->when($wiki !== null, fn (Builder $q) => $q->where('wiki', $wiki));
+            ->when($wiki !== null, fn (Builder $q) => $q->where('wiki', $wiki))
+            ->tap(fn (Builder $q) => $this->fromSource($q));
+    }
+
+    private function fromSource(Builder $query): Builder
+    {
+        return $query->when(
+            $this->source !== null,
+            fn (Builder $q) => $q->where('automated', $this->source === self::SOURCE_AUTOMATED)
+        );
+    }
+
+    /**
+     * @return list<array{key: string, total: int, closed: int, action_taken: int}>
+     */
+    private function bySource(CarbonImmutable $from, CarbonImmutable $to, ?string $wiki): array
+    {
+        $rows = SafetyCase::query()
+            ->whereBetween('created_at', [$from, $to])
+            ->when($wiki !== null, fn (Builder $q) => $q->where('wiki', $wiki))
+            ->selectRaw('automated, count(*) as total, '
+                .'sum(case when closed_at is not null then 1 else 0 end) as closed, '
+                .'sum(case when status = ? then 1 else 0 end) as action_taken', [SafetyCase::STATUS_ACTION_TAKEN])
+            ->groupBy('automated')
+            ->get()
+            ->keyBy(fn ($row) => (bool) $row->automated ? self::SOURCE_AUTOMATED : self::SOURCE_PEOPLE);
+
+        return array_map(fn (string $source) => [
+            'key' => $source,
+            'total' => (int) ($rows[$source]->total ?? 0),
+            'closed' => (int) ($rows[$source]->closed ?? 0),
+            'action_taken' => (int) ($rows[$source]->action_taken ?? 0),
+        ], self::SOURCES);
     }
 
     private function sanctions(CarbonImmutable $from, CarbonImmutable $to): Builder

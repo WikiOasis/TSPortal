@@ -38,6 +38,7 @@
 				<h2>How these were produced</h2>
 				<div class="ts-panel">
 					<p>{{ figures.method.suppression }}</p>
+					<p v-if="figures.method.automated">{{ figures.method.automated }}</p>
 					<p class="ts-meta">
 						Covering {{ date( figures.period.from ) }} to {{ date( figures.period.to ) }} —
 						{{ figures.period.days }} days. Computed {{ dateTime( figures.method.generated_at ) }}.
@@ -65,6 +66,12 @@
 							:data="bars( figures.reports.by_type )"
 							:withheld="withheld( figures.reports.by_type )"
 						/>
+						<BarList
+							v-if="figures.reports.by_source"
+							title="By source"
+							:data="bars( figures.reports.by_source )"
+							:withheld="withheld( figures.reports.by_source )"
+						/>
 					</div>
 
 					<div class="ts-panel">
@@ -89,6 +96,21 @@
 							title="How they ended"
 							:data="bars( figures.reports.how_they_ended )"
 							:withheld="withheld( figures.reports.how_they_ended )"
+						/>
+					</div>
+
+					<div v-if="figures.reports.automated" class="ts-panel">
+						<h3 class="ts-chart__title">Raised by automated scanning</h3>
+						<dl class="ts-dl">
+							<div>
+								<dt>Received</dt>
+								<dd>{{ figures.reports.automated.total.display }}</dd>
+							</div>
+						</dl>
+						<BarList
+							title="How they ended"
+							:data="bars( figures.reports.automated.how_they_ended )"
+							:withheld="withheld( figures.reports.automated.how_they_ended )"
 						/>
 					</div>
 				</div>

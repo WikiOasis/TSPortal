@@ -41,6 +41,7 @@ final class CaseService
             : SafetyCase::TYPE_REPORT;
 
         $anonymous = (bool) ($input['anonymous'] ?? false);
+        $automated = (bool) ($input['automated'] ?? false);
         $answers = (array) ($input['answers'] ?? []);
         $roles = (array) ($input['roles'] ?? []);
 
@@ -65,7 +66,7 @@ final class CaseService
 
         $subjectLine = $this->subjectLine($input, $type, $roles, $answers);
 
-        $case = DB::transaction(function () use ($type, $anonymous, $input, $answers, $roles, $reporter, $about, $subjectLine, $appeal, $appealed, $categories) {
+        $case = DB::transaction(function () use ($type, $anonymous, $automated, $input, $answers, $roles, $reporter, $about, $subjectLine, $appeal, $appealed, $categories) {
             $reference = SafetyCase::nextReference($subjectLine);
 
             $case = SafetyCase::create([
@@ -89,12 +90,16 @@ final class CaseService
                 'investigation_id' => $appealed?->investigation_id,
                 'category' => $categories[0]['category'] ?? null,
                 'category_group' => $categories[0]['group'] ?? null,
-                'priority' => Triage::priorityFor(
-                    array_column($categories, 'category'),
-                    SafetyCase::PRIORITY_NORMAL,
-                    $answers,
-                ),
-                'threat_to_life' => Triage::detect(array_column($categories, 'category'), $answers),
+                'priority' => $automated
+                    ? SafetyCase::PRIORITY_HIGH
+                    : Triage::priorityFor(
+                        array_column($categories, 'category'),
+                        SafetyCase::PRIORITY_NORMAL,
+                        $answers,
+                    ),
+                'threat_to_life' => ! $automated
+                    && Triage::detect(array_column($categories, 'category'), $answers),
+                'automated' => $automated,
                 'data_kind' => $type === SafetyCase::TYPE_DATA
                     ? $this->dataKindFrom($roles, $answers)
                     : null,
@@ -121,6 +126,7 @@ final class CaseService
             'categories' => array_column($categories, 'category'),
             'priority' => $case->priority,
             'threat_to_life' => $case->threat_to_life,
+            'automated' => $case->automated,
             'appeal_against' => $appealed?->reference,
             'appeal_link' => $type === SafetyCase::TYPE_APPEAL ? $appeal->source : null,
         ], actorLabel: 'wiki');

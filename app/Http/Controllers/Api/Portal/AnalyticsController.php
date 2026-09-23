@@ -22,11 +22,17 @@ class AnalyticsController extends Controller
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date'],
             'wiki' => ['nullable', 'string', 'max:64'],
+            'source' => ['nullable', 'string', 'in:'.implode(',', Analytics::SOURCES)],
         ]);
 
         [$from, $to] = $this->window($filters);
 
-        return response()->json($this->analytics->overview($from, $to, $filters['wiki'] ?? null) + [
+        return response()->json($this->analytics->overview(
+            $from,
+            $to,
+            $filters['wiki'] ?? null,
+            $filters['source'] ?? null,
+        ) + [
             'options' => [
                 'wikis' => SafetyCase::query()
                     ->whereNotNull('wiki')

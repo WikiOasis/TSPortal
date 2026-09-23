@@ -324,4 +324,58 @@ class AnalyticsTest extends TestCase
 
         $this->actingAs($outsider)->getJson('/api/portal/analytics')->assertForbidden();
     }
+
+    #[Test]
+    public function intake_is_split_between_people_and_automated_scanning(): void
+    {
+        $this->case(['created_at' => '2026-06-02 09:00:00']);
+        $this->case(['created_at' => '2026-06-03 09:00:00', 'automated' => true]);
+        $this->case([
+            'created_at' => '2026-06-04 09:00:00',
+            'automated' => true,
+            'status' => SafetyCase::STATUS_ACTION_TAKEN,
+            'closed_at' => '2026-06-05 09:00:00',
+        ]);
+
+        [$from, $to] = $this->window();
+        $bySource = collect(app(Analytics::class)->overview($from, $to)['intake']['by_source'])->keyBy('key');
+
+        $this->assertSame(1, $bySource['people']['total']);
+        $this->assertSame(2, $bySource['automated']['total']);
+        $this->assertSame(1, $bySource['automated']['closed']);
+        $this->assertSame(1, $bySource['automated']['action_taken']);
+    }
+
+    #[Test]
+    public function the_source_filter_narrows_every_case_figure_but_not_the_split(): void
+    {
+        $this->case(['created_at' => '2026-06-02 09:00:00']);
+        $this->case(['created_at' => '2026-06-02 10:00:00']);
+        $this->case(['created_at' => '2026-06-03 09:00:00', 'automated' => true]);
+
+        [$from, $to] = $this->window();
+        $people = app(Analytics::class)->overview($from, $to, null, Analytics::SOURCE_PEOPLE);
+        $automated = app(Analytics::class)->overview($from, $to, null, Analytics::SOURCE_AUTOMATED);
+
+        $this->assertSame(2, $people['headline']['received']['value']);
+        $this->assertSame(1, $automated['headline']['received']['value']);
+        $this->assertSame(1, $automated['handling']['backlog']['total']);
+        $this->assertSame('automated', $automated['period']['source']);
+
+        $split = collect($people['intake']['by_source'])->pluck('total', 'key')->all();
+        $this->assertSame(['people' => 2, 'automated' => 1], $split);
+    }
+
+    #[Test]
+    public function an_unknown_source_means_every_source(): void
+    {
+        $this->case(['created_at' => '2026-06-02 09:00:00']);
+        $this->case(['created_at' => '2026-06-03 09:00:00', 'automated' => true]);
+
+        [$from, $to] = $this->window();
+        $overview = app(Analytics::class)->overview($from, $to, null, 'robots');
+
+        $this->assertSame(2, $overview['headline']['received']['value']);
+        $this->assertNull($overview['period']['source']);
+    }
 }

@@ -47,6 +47,11 @@
 			</cdx-field>
 
 			<cdx-field>
+				<template #label>Source</template>
+				<cdx-select v-model:selected="filters.source" :menu-items="sourceOptions" @update:selected="reload" />
+			</cdx-field>
+
+			<cdx-field>
 				<template #label>File</template>
 				<cdx-select v-model:selected="filters.investigation" :menu-items="fileOptions" @update:selected="reload" />
 			</cdx-field>
@@ -146,6 +151,9 @@
 				<template #item-category="{ row }">
 					<cdx-info-chip v-if="row.threat_to_life" status="error">
 						Threat to life
+					</cdx-info-chip>
+					<cdx-info-chip v-else-if="row.automated" status="notice">
+						Automated
 					</cdx-info-chip>
 					<cdx-info-chip v-else-if="primaryCategory( row )">
 						{{ primaryCategory( row ) }}
@@ -250,6 +258,7 @@ const filters = reactive( {
 	assignee: null,
 	priority: null,
 	threat: route.query.threat ? 1 : null,
+	source: [ 'people', 'automated' ].includes( route.query.source ) ? route.query.source : null,
 	investigation: route.query.file === 'none' ? 'none' : null,
 	sort: 'oldest',
 	page: 1
@@ -324,6 +333,12 @@ const threatOptions = [
 	{ value: 1, label: 'Threat to life' }
 ];
 
+const sourceOptions = [
+	{ value: null, label: 'Any' },
+	{ value: 'people', label: 'Filed by people' },
+	{ value: 'automated', label: 'Automated' }
+];
+
 const priorityFilterOptions = [
 	{ value: null, label: 'Any' },
 	...PRIORITIES
@@ -368,6 +383,7 @@ async function reload() {
 		assignee: filters.assignee,
 		priority: filters.priority,
 		threat: filters.threat,
+		source: filters.source,
 		investigation: filters.investigation,
 		sort: filters.sort,
 		page: filters.page

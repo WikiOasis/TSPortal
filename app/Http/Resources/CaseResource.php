@@ -43,6 +43,7 @@ class CaseResource extends JsonResource
             ])->all()),
 
             'threat_to_life' => $this->isThreatToLife(),
+            'automated' => (bool) $this->automated,
 
             'duplicate_of' => $this->whenLoaded('duplicateOf', fn () => $this->duplicateOf === null ? null : [
                 'id' => $this->duplicateOf->id,

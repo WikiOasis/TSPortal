@@ -147,6 +147,7 @@ class SafetyCase extends Model
         'status',
         'priority',
         'threat_to_life',
+        'automated',
         'anonymous',
         'reporter_subject_id',
         'assigned_to',
@@ -174,6 +175,7 @@ class SafetyCase extends Model
         'status' => self::STATUS_RECEIVED,
         'priority' => self::PRIORITY_NORMAL,
         'threat_to_life' => false,
+        'automated' => false,
         'anonymous' => false,
     ];
 
@@ -182,6 +184,7 @@ class SafetyCase extends Model
         return [
             'anonymous' => 'boolean',
             'threat_to_life' => 'boolean',
+            'automated' => 'boolean',
             'answers' => 'array',
             'about' => 'array',
             'closed_at' => 'datetime',

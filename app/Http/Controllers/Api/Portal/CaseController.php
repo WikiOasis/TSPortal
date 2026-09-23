@@ -39,6 +39,7 @@ class CaseController extends Controller
             'category' => ['nullable', 'string', 'max:400'],
 
             'threat' => ['nullable', 'boolean'],
+            'source' => ['nullable', 'string', 'in:people,automated'],
 
             'sort' => ['nullable', 'string', 'in:oldest,newest,updated,priority,status,reference'],
             'per_page' => ['nullable', 'integer', 'min:5', 'max:100'],
@@ -75,6 +76,9 @@ class CaseController extends Controller
         }
         if (($filters['threat'] ?? false)) {
             $query->threatToLife();
+        }
+        if (! empty($filters['source'])) {
+            $query->where('automated', $filters['source'] === 'automated');
         }
         if (! empty($filters['category'])) {
             $wanted = array_values(array_filter(array_map('trim', explode(',', $filters['category']))));
@@ -266,6 +270,13 @@ class CaseController extends Controller
 
         $query->orderByRaw('CASE WHEN priority = ? AND status IN (?, ?, ?) THEN 0 ELSE 1 END', [
             SafetyCase::PRIORITY_URGENT,
+            SafetyCase::STATUS_RECEIVED,
+            SafetyCase::STATUS_IN_REVIEW,
+            SafetyCase::STATUS_INVESTIGATING,
+        ]);
+
+        $query->orderByRaw('CASE WHEN automated = ? AND status IN (?, ?, ?) THEN 1 ELSE 0 END', [
+            true,
             SafetyCase::STATUS_RECEIVED,
             SafetyCase::STATUS_IN_REVIEW,
             SafetyCase::STATUS_INVESTIGATING,

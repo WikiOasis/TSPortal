@@ -89,6 +89,9 @@ final class Transparency
                         $threshold + 1
                     )
                     : 'Exact counts are shown throughout; no suppression was applied.',
+                'automated' => 'Some reports were raised by automated scanning of edits and pages rather '
+                    .'than filed by a person. They are counted in the totals and broken down separately, '
+                    .'and every one was reviewed by a person before any action was taken.',
                 'generated_at' => now()->toIso8601String(),
             ],
 
@@ -151,21 +154,47 @@ final class Transparency
 
             'uncategorised' => $this->band($cases()->whereNull('category')->count(), $threshold),
 
+            'by_source' => $this->rows(
+                $cases()->selectRaw(
+                    "case when automated then 'automated' else 'people' end as k, count(*) as total"
+                )->groupBy('automated')->orderByDesc('total')->get(),
+                $threshold,
+                fn (?string $key) => $key === 'automated' ? 'Raised by automated scanning' : 'Filed by people'
+            ),
+
+            'automated' => [
+                'total' => $this->band($cases()->where('automated', true)->count(), $threshold),
+                'how_they_ended' => $this->rows(
+                    SafetyCase::query()
+                        ->where('automated', true)
+                        ->whereBetween('closed_at', [$from, $to])
+                        ->selectRaw('status as k, count(*) as total')
+                        ->groupBy('status')->orderByDesc('total')->get(),
+                    $threshold,
+                    fn (?string $key) => $this->statusLabel($key)
+                ),
+            ],
+
             'how_they_ended' => $this->rows(
                 SafetyCase::query()
                     ->whereBetween('closed_at', [$from, $to])
                     ->selectRaw('status as k, count(*) as total')
                     ->groupBy('status')->orderByDesc('total')->get(),
                 $threshold,
-                fn (?string $key) => match ($key) {
-                    SafetyCase::STATUS_ACTION_TAKEN => 'Action taken',
-                    SafetyCase::STATUS_REJECTED => 'Looked into, no action taken',
-                    SafetyCase::STATUS_CLOSED => 'Closed',
-                    SafetyCase::STATUS_DUPLICATE => 'Merged with another report',
-                    default => ucfirst(str_replace('-', ' ', (string) $key)),
-                }
+                fn (?string $key) => $this->statusLabel($key)
             ),
         ];
+    }
+
+    private function statusLabel(?string $key): string
+    {
+        return match ($key) {
+            SafetyCase::STATUS_ACTION_TAKEN => 'Action taken',
+            SafetyCase::STATUS_REJECTED => 'Looked into, no action taken',
+            SafetyCase::STATUS_CLOSED => 'Closed',
+            SafetyCase::STATUS_DUPLICATE => 'Merged with another report',
+            default => ucfirst(str_replace('-', ' ', (string) $key)),
+        };
     }
 
     /**

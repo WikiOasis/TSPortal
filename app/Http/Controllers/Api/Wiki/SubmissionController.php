@@ -21,6 +21,7 @@ class SubmissionController extends Controller
             'flow' => ['nullable', 'string', 'max:32'],
             'wiki' => ['nullable', 'string', 'max:64'],
             'anonymous' => ['boolean'],
+            'automated' => ['boolean'],
             'reporter' => ['nullable', 'array'],
             'reporter.central_id' => ['nullable', 'integer'],
             'reporter.username' => ['nullable', 'string', 'max:255'],

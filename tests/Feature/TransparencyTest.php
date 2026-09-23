@@ -265,4 +265,49 @@ class TransparencyTest extends TestCase
             ])
             ->assertStatus(422);
     }
+
+    #[Test]
+    public function a_report_separates_reports_filed_by_people_from_automated_ones(): void
+    {
+        foreach (range(1, 6) as $i) {
+            $this->case();
+        }
+        foreach (range(1, 7) as $i) {
+            $this->case([
+                'automated' => true,
+                'status' => SafetyCase::STATUS_REJECTED,
+                'closed_at' => '2026-06-10 09:00:00',
+            ]);
+        }
+
+        $figures = $this->report(5)->figures;
+
+        $sources = collect($figures['reports']['by_source']['rows'])->keyBy('key');
+        $this->assertSame(6, $sources['people']['total']);
+        $this->assertSame(7, $sources['automated']['total']);
+        $this->assertSame('Raised by automated scanning', $sources['automated']['label']);
+
+        $this->assertSame(13, $figures['reports']['total']['value']);
+        $this->assertSame(7, $figures['reports']['automated']['total']['value']);
+        $this->assertSame(
+            ['Looked into, no action taken'],
+            array_column($figures['reports']['automated']['how_they_ended']['rows'], 'label')
+        );
+        $this->assertStringContainsString('automated scanning', $figures['method']['automated']);
+    }
+
+    #[Test]
+    public function a_handful_of_automated_reports_is_banded_like_any_other_count(): void
+    {
+        foreach (range(1, 6) as $i) {
+            $this->case();
+        }
+        $this->case(['automated' => true]);
+
+        $figures = $this->report(5)->figures;
+
+        $this->assertSame(['people'], array_column($figures['reports']['by_source']['rows'], 'key'));
+        $this->assertSame(1, $figures['reports']['by_source']['withheld']['rows']);
+        $this->assertTrue($figures['reports']['automated']['total']['suppressed']);
+    }
 }

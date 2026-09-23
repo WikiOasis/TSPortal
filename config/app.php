@@ -2,7 +2,7 @@
 
 return [
     'name' => env('APP_NAME', 'Laravel'),
-    'version' => env('APP_VERSION', '1.3.0'),
+    'version' => env('APP_VERSION', '1.3.1'),
     'env' => env('APP_ENV', 'production'),
     'debug' => (bool) env('APP_DEBUG', false),
     'url' => env('APP_URL', 'http://localhost'),

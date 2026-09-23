@@ -318,4 +318,31 @@ class ThreatToLifeTest extends TestCase
 
         $this->assertSame(SafetyCase::PRIORITY_URGENT, Triage::escalatedPriority());
     }
+
+    #[Test]
+    public function an_automated_flag_is_high_priority_and_never_treated_as_a_threat_to_life(): void
+    {
+        $case = $this->submit([
+            ['id' => 'threat-of-physical-harm', 'label' => 'Threat of physical harm', 'group' => 'automated'],
+        ], [
+            'automated' => true,
+            'answers' => ['threat-to-life' => 'yes', 'report' => 'threat-of-physical-harm'],
+        ]);
+
+        $this->assertSame(SafetyCase::PRIORITY_HIGH, $case->priority);
+        $this->assertFalse($case->isThreatToLife());
+        $this->assertTrue($case->automated);
+
+        $created = AuditLog::query()->where('action', 'case.created')->latest('id')->firstOrFail();
+        $this->assertFalse($created->meta['threat_to_life']);
+    }
+
+    #[Test]
+    public function an_automated_flag_with_no_harm_category_is_still_high_priority(): void
+    {
+        $case = $this->submit([], ['automated' => true]);
+
+        $this->assertSame(SafetyCase::PRIORITY_HIGH, $case->priority);
+        $this->assertFalse($case->isThreatToLife());
+    }
 }

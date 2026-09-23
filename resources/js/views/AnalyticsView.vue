@@ -23,6 +23,11 @@
 				<template #label>Wiki</template>
 				<cdx-select v-model:selected="wiki" :menu-items="wikiOptions" @update:selected="reload" />
 			</cdx-field>
+
+			<cdx-field>
+				<template #label>Source</template>
+				<cdx-select v-model:selected="source" :menu-items="sourceOptions" @update:selected="reload" />
+			</cdx-field>
 		</div>
 
 		<LoadError :error="error" :retry="reload" />
@@ -76,6 +81,15 @@
 
 					<div class="ts-panel">
 						<BarList title="By kind" :data="typeRows" />
+					</div>
+
+					<div class="ts-panel">
+						<BarList
+							title="By source"
+							subtitle="Every source, whichever one is selected above."
+							:data="sourceRows"
+						/>
+						<p v-if="automatedSummary" class="ts-meta">{{ automatedSummary }}</p>
 					</div>
 
 					<div class="ts-panel">
@@ -343,6 +357,7 @@ const range = ref( route.query.range ?? '90' );
 const from = ref( route.query.from ?? '' );
 const to = ref( route.query.to ?? '' );
 const wiki = ref( route.query.wiki ?? '' );
+const source = ref( route.query.source ?? '' );
 
 const ranges = [
 	{ value: '30', label: 'Last 30 days' },
@@ -356,6 +371,27 @@ const wikiOptions = computed( () => [
 	{ value: '', label: 'Every wiki' },
 	...( data.value?.options.wikis ?? [] ).map( ( w ) => ( { value: w, label: w } ) )
 ] );
+
+const SOURCE_LABELS = {
+	people: 'Filed by people',
+	automated: 'Raised by automated scanning'
+};
+
+const sourceOptions = [
+	{ value: '', label: 'Every source' },
+	...Object.entries( SOURCE_LABELS ).map( ( [ value, label ] ) => ( { value, label } ) )
+];
+
+const sourceRows = computed( () => label( data.value?.intake.by_source, SOURCE_LABELS ) );
+
+const automatedSummary = computed( () => {
+	const row = ( data.value?.intake.by_source ?? [] ).find( ( r ) => r.key === 'automated' );
+	if ( !row || !row.closed ) {
+		return '';
+	}
+	return `${ row.action_taken } of ${ row.closed } closed automated reports ` +
+		`(${ percent( row.action_taken / row.closed ) }) led to action.`;
+} );
 
 const peopleColumns = [
 	{ id: 'username', label: 'Who' },
@@ -446,7 +482,12 @@ function onRange( value ) {
 
 function params() {
 	if ( range.value === 'custom' ) {
-		return { from: from.value || undefined, to: to.value || undefined, wiki: wiki.value || undefined };
+		return {
+			from: from.value || undefined,
+			to: to.value || undefined,
+			wiki: wiki.value || undefined,
+			source: source.value || undefined
+		};
 	}
 
 	const end = new Date();
@@ -455,7 +496,8 @@ function params() {
 	return {
 		from: start.toISOString().slice( 0, 10 ),
 		to: end.toISOString().slice( 0, 10 ),
-		wiki: wiki.value || undefined
+		wiki: wiki.value || undefined,
+		source: source.value || undefined
 	};
 }
 
@@ -467,7 +509,8 @@ async function reload() {
 		range: range.value,
 		from: from.value || undefined,
 		to: to.value || undefined,
-		wiki: wiki.value || undefined
+		wiki: wiki.value || undefined,
+		source: source.value || undefined
 	} } );
 
 	try {
