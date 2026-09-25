@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Services\Safety\Pages;
 use App\Services\Safety\References;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Sanction extends Model
 {
@@ -23,6 +25,8 @@ class Sanction extends Model
 
     public const TYPE_WIKI_DELETION = 'wiki-deletion';
 
+    public const TYPE_PAGE_DELETION = 'page-deletion';
+
     public const TYPE_OTHER = 'other';
 
     public const TYPES = [
@@ -31,12 +35,17 @@ class Sanction extends Model
         self::TYPE_BLOCK,
         self::TYPE_LOCK,
         self::TYPE_WIKI_DELETION,
+        self::TYPE_PAGE_DELETION,
         self::TYPE_OTHER,
     ];
 
     public const WIKI_SCOPED = [self::TYPE_BLOCK, self::TYPE_WIKI_DELETION];
 
-    public const WIKI_TARGETED = [self::TYPE_WIKI_DELETION];
+    public const WIKI_TARGETED = [self::TYPE_WIKI_DELETION, self::TYPE_PAGE_DELETION];
+
+    public const PAGE_TARGETED = [self::TYPE_PAGE_DELETION];
+
+    public const NOTICE_TYPES = [self::TYPE_WARNING, self::TYPE_NOTE];
 
     public const RECORD_ONLY = [self::TYPE_NOTE, self::TYPE_OTHER];
 
@@ -46,6 +55,7 @@ class Sanction extends Model
         self::TYPE_BLOCK => 'Block',
         self::TYPE_LOCK => 'Account suspension',
         self::TYPE_WIKI_DELETION => 'Wiki deletion',
+        self::TYPE_PAGE_DELETION => 'Page deletion',
 
         self::TYPE_OTHER => 'Action taken',
 
@@ -76,10 +86,12 @@ class Sanction extends Model
         'subject_id',
         'case_id',
         'investigation_id',
+        'prompted_by_id',
         'type',
         'label',
         'scope',
         'wikis',
+        'pages',
         'reason',
         'internal_reason',
         'reason_category',
@@ -108,6 +120,7 @@ class Sanction extends Model
             'active' => 'boolean',
             'appealable' => 'boolean',
             'wikis' => 'array',
+            'pages' => 'array',
             'push_result' => 'array',
         ];
     }
@@ -125,6 +138,16 @@ class Sanction extends Model
     public function investigation(): BelongsTo
     {
         return $this->belongsTo(Investigation::class);
+    }
+
+    public function promptedBy(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'prompted_by_id');
+    }
+
+    public function notices(): HasMany
+    {
+        return $this->hasMany(self::class, 'prompted_by_id');
     }
 
     public function issuer(): BelongsTo
@@ -160,11 +183,12 @@ class Sanction extends Model
             self::TYPE_NOTE => 'note',
             self::TYPE_BLOCK => 'block',
             self::TYPE_WIKI_DELETION => 'delete-wiki',
+            self::TYPE_PAGE_DELETION => 'delete-page',
             default => $this->type,
         };
     }
 
-    public const FANNED_OUT = ['block', 'unblock'];
+    public const FANNED_OUT = ['block', 'unblock', 'delete-page', 'undelete-page'];
 
     public function reasonCategoryLabel(): ?string
     {
@@ -191,8 +215,17 @@ class Sanction extends Model
         return in_array($this->type, self::WIKI_TARGETED, true);
     }
 
+    public function isPageTargeted(): bool
+    {
+        return in_array($this->type, self::PAGE_TARGETED, true);
+    }
+
     public function whereItApplies(): string
     {
+        if ($this->isPageTargeted() && $this->pages !== null && $this->pages !== []) {
+            return Pages::describe($this->pages);
+        }
+
         if ($this->isWikiScoped() && $this->wikis !== null && $this->wikis !== []) {
             return implode(', ', $this->wikis);
         }

@@ -124,6 +124,9 @@
 			<cdx-button action="progressive" @click="openFileForSelection">
 				Open one file for these
 			</cdx-button>
+			<cdx-button :disabled="openingEach" @click="openFileForEach">
+				{{ openingEach ? 'Opening…' : 'Open a file for each' }}
+			</cdx-button>
 		</div>
 
 		<div class="ts-panel ts-scroll ts-queue">
@@ -269,6 +272,7 @@ const team = ref( [] );
 const busy = ref( null );
 const selected = ref( [] );
 const showOpenFile = ref( false );
+const openingEach = ref( false );
 const showHelp = ref( false );
 const help = ref( [] );
 const automation = ref( null );
@@ -528,7 +532,24 @@ async function onFileOpened( investigation ) {
 	}
 
 	clearSelection();
-	router.push( { name: 'investigation', params: { id: investigation.id } } );
+	router.push( { name: 'investigation', params: { id: investigation.id }, hash: '#pages' } );
+}
+
+async function openFileForEach() {
+	openingEach.value = true;
+	try {
+		const response = await api.openInvestigationsFromCases( { case_ids: selected.value, mode: 'each' } );
+		const skipped = response.skipped.length
+			? ` ${ response.skipped.length } already had one: ${ response.skipped.map( ( s ) => s.case ).join( ', ' ) }.`
+			: '';
+		notify( `${ response.opened.length } file${ response.opened.length === 1 ? '' : 's' } opened.${ skipped }` );
+		clearSelection();
+		await reload();
+	} catch ( e ) {
+		notify( e.message, 'error' );
+	} finally {
+		openingEach.value = false;
+	}
 }
 
 function clearSelection() {

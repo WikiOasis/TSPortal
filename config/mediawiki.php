@@ -6,7 +6,7 @@ return [
     'central_url' => rtrim((string) env('MW_CENTRAL_URL', 'https://meta.wikioasis.org'), '/'),
     'api_url' => rtrim((string) env('MW_API_URL', env('MW_CENTRAL_URL', 'https://meta.wikioasis.org').'/w/api.php'), '/'),
     'rest_url' => rtrim((string) env('MW_REST_URL', env('MW_CENTRAL_URL', 'https://meta.wikioasis.org').'/w/rest.php'), '/'),
-    'user_agent' => (string) env('MW_USER_AGENT', 'TSPortal/0.1.0 (https://ts.wikioasis.org; trustandsafety@wikioasis.org)'),
+    'user_agent' => (string) env('MW_USER_AGENT', 'TSPortal/1.4.0 (https://ts.wikioasis.org; trustandsafety@wikioasis.org)'),
     'timeout' => (int) env('MW_HTTP_TIMEOUT', 15),
     's2s' => [
         'secret' => env('MW_S2S_SECRET'),
@@ -17,7 +17,7 @@ return [
     'supported_actions' => array_values(array_filter(
         array_map('trim', explode(',', (string) env(
             'MW_SUPPORTED_ACTIONS',
-            'lock,unlock,warn,note,block,unblock,delete-wiki,undelete-wiki,rename,renamestatus,removepii',
+            'lock,unlock,warn,note,block,unblock,delete-wiki,undelete-wiki,delete-page,undelete-page,rename,renamestatus,removepii',
         )))
     )),
     'centralauth_lock' => (bool) env('MW_CENTRALAUTH_LOCK', true),

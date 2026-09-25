@@ -52,6 +52,12 @@ final class BulkActions
         if ($kind === self::KIND_ACTION) {
             $type = $input['type'] ?? '';
 
+            if (in_array($type, Sanction::PAGE_TARGETED, true)) {
+                throw new InvalidArgumentException(
+                    'Pages are deleted from the pages on the file, not against a list of accounts.'
+                );
+            }
+
             if (in_array($type, Sanction::WIKI_TARGETED, true)) {
                 throw new InvalidArgumentException(
                     'Deleting a wiki is not something to do against a list of accounts. Take it one at a time.'

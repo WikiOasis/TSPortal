@@ -20,6 +20,8 @@ final class WikiClient
         'unblock',
         'delete-wiki',
         'undelete-wiki',
+        'delete-page',
+        'undelete-page',
         'rename',
         'renamestatus',
         'removepii',
@@ -92,6 +94,20 @@ final class WikiClient
             'username' => (string) ($result['username'] ?? $username),
             'registered_at' => $result['registered_at'] ?? null,
         ];
+    }
+
+    /**
+     * @param  array<string, list<string>>  $byWiki
+     * @return list<array<string, mixed>>
+     */
+    public function pageInfo(array $byWiki, int $editors = 50): array
+    {
+        $result = $this->call('wikioasissafetypageinfo', [
+            'pages' => json_encode($byWiki, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'editors' => $editors,
+        ]);
+
+        return array_values(array_filter((array) ($result['pages'] ?? []), 'is_array'));
     }
 
     /**

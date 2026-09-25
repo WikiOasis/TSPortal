@@ -78,6 +78,9 @@
 						<cdx-button v-tooltip="'Shortcut: B'" action="progressive" weight="primary" @click="showBatch = true">
 							Check and close
 						</cdx-button>
+						<cdx-button v-tooltip="'Shortcut: F'" :disabled="working" @click="fileRows( closeBatch.items, 'the close batch' )">
+							Open a file for their pages
+						</cdx-button>
 						<cdx-button weight="quiet" @click="closeBatch.clear()">Empty the batch</cdx-button>
 					</div>
 
@@ -190,6 +193,9 @@
 										<cdx-button v-tooltip="'Shortcut: C'" action="destructive" :disabled="busy" @click="closeNow">
 											Close now
 										</cdx-button>
+										<cdx-button v-tooltip="'Shortcut: F'" :disabled="busy || working" @click="fileCurrent">
+											Open a file for this page
+										</cdx-button>
 									</div>
 									<div class="ts-inline">
 										<span class="ts-meta">Not right? Move it to</span>
@@ -251,6 +257,9 @@
 												<cdx-button size="small" action="progressive" @click="reviewGroup( group )">Review</cdx-button>
 												<cdx-button size="small" :disabled="working" @click="batchGroup( group )">Add all to batch</cdx-button>
 												<cdx-button size="small" weight="quiet" :disabled="working" @click="mergeTarget = group">Merge</cdx-button>
+												<cdx-button size="small" :disabled="working" @click="fileGroup( group )">
+													{{ mode === 'page' ? 'Open a file for this page' : 'Open a file for their pages' }}
+												</cdx-button>
 											</span>
 										</td>
 									</tr>
@@ -301,6 +310,7 @@
 		<div class="ts-visually-hidden" role="status" aria-live="polite">{{ spoken }}</div>
 
 		<CloseBatchDialog v-model:open="showBatch" @closed="onBatchClosed" />
+
 
 		<cdx-dialog v-model:open="showKeys" title="Keyboard shortcuts" :use-close-button="true">
 			<cdx-table
@@ -360,6 +370,8 @@ const KEYS = [
 	{ keys: 'X', what: 'Add to the close batch (or take out), then go to the next' },
 	{ keys: 'T', what: 'Take it: assign it to you and open the case' },
 	{ keys: 'C', what: 'Close this one now with no action' },
+	{ keys: 'F', what: 'Open a file for this flag, to delete its page from there' },
+	{ keys: 'Shift F', what: 'Open one file for every flag in the close batch' },
 	{ keys: '1 / 2 / 3', what: 'Disagree: move to needs review quickly / needs review / unlikely' },
 	{ keys: 'J / ↓', what: 'Next flag' },
 	{ keys: 'K / ↑', what: 'Previous flag' },
@@ -431,6 +443,7 @@ const stats = ref( null );
 const statsLoading = ref( false );
 
 const showBatch = ref( false );
+
 const showKeys = ref( false );
 const menuChoice = ref( null );
 const spoken = ref( '' );
@@ -877,6 +890,48 @@ function groupParams( group ) {
 		: { wiki: group.wiki, author: group.name, page: null };
 }
 
+function fileCurrent() {
+	const row = currentRow.value;
+	if ( row ) {
+		fileRows( [ row ], row.review?.page_title ?? row.reference );
+	}
+}
+
+async function fileRows( rows, what ) {
+	if ( !rows.length ) {
+		return;
+	}
+	working.value = true;
+	try {
+		const response = await api.openInvestigationsFromCases( {
+			case_ids: rows.map( ( r ) => r.id ),
+			mode: 'one',
+			title: `Automated flags: ${ what }`
+		} );
+		const file = response.opened[ 0 ];
+		closeBatch.remove( rows.map( ( r ) => r.id ) );
+		notify( `${ rows.length } flag${ rows.length === 1 ? '' : 's' } put on ${ file.reference }.` );
+		router.push( { name: 'investigation', params: { id: file.id }, hash: '#pages' } );
+	} catch ( e ) {
+		notify( e.message, 'error' );
+	} finally {
+		working.value = false;
+	}
+}
+
+async function fileGroup( group ) {
+	working.value = true;
+	try {
+		const rows = await groupRows( group );
+		working.value = false;
+		await fileRows( rows, `${ group.name } on ${ group.wiki }` );
+	} catch ( e ) {
+		notify( e.message, 'error' );
+	} finally {
+		working.value = false;
+	}
+}
+
 function reviewGroup( group ) {
 	Object.assign( filter, groupParams( group ) );
 	mode.value = 'focus';
@@ -1057,6 +1112,14 @@ function onKeydown( event ) {
 		return;
 	}
 
+	if ( event.key === 'F' ) {
+		if ( closeBatch.items.length && !working.value ) {
+			event.preventDefault();
+			fileRows( closeBatch.items, 'the close batch' );
+		}
+		return;
+	}
+
 	if ( mode.value !== 'focus' || !currentRow.value ) {
 		return;
 	}
@@ -1071,6 +1134,7 @@ function onKeydown( event ) {
 		t: () => !takenByOther.value && takeIt(),
 		A: batchAllLoaded,
 		c: closeNow,
+		f: fileCurrent,
 		Enter: openCase,
 		o: openOnWiki,
 		1: () => moveTo( 'urgent' ),

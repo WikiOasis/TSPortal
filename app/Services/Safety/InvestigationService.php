@@ -10,11 +10,16 @@ use App\Models\InvestigationNote;
 use App\Models\SafetyCase;
 use App\Models\Subject;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 final class InvestigationService
 {
-    public function __construct(private readonly CaseService $cases) {}
+    public function __construct(
+        private readonly CaseService $cases,
+        private readonly InvestigationPages $pages,
+    ) {}
 
     /**
      * @param  array{title?: ?string, premise?: ?string, priority?: ?string,
@@ -77,6 +82,62 @@ final class InvestigationService
         return $investigation;
     }
 
+    public const MODE_ONE = 'one';
+
+    public const MODE_EACH = 'each';
+
+    /**
+     * @param  Collection<int, SafetyCase>  $cases
+     * @param  array{title?: ?string, premise?: ?string, priority?: ?string, assign_to_me?: bool}  $input
+     * @return array{opened: list<Investigation>, skipped: list<array{case: string, reason: string}>}
+     */
+    public function openForCases(Collection $cases, User $actor, string $mode, array $input = []): array
+    {
+        if ($cases->isEmpty()) {
+            throw new \InvalidArgumentException('Nothing was selected.');
+        }
+
+        $cases->loadMissing('investigation');
+
+        if ($mode === self::MODE_ONE) {
+            $first = $cases->first();
+            $file = $this->open($input, $actor, $first);
+
+            foreach ($cases->skip(1) as $case) {
+                $this->attachCase($file, $case, $actor);
+            }
+
+            return ['opened' => [$file], 'skipped' => []];
+        }
+
+        if ($mode !== self::MODE_EACH) {
+            throw new \InvalidArgumentException("There is no way to open files called '{$mode}'.");
+        }
+
+        $opened = [];
+        $skipped = [];
+
+        foreach ($cases as $case) {
+            if ($case->investigation !== null && $case->investigation->isLive()) {
+                $skipped[] = [
+                    'case' => $case->reference,
+                    'reason' => sprintf('Already on %s.', $case->investigation->reference),
+                ];
+
+                continue;
+            }
+
+            $opened[] = $this->open([
+                'title' => Str::limit((string) ($case->subject_line ?: ''), 250, ''),
+                'premise' => $input['premise'] ?? sprintf('Opened from %s.', $case->reference),
+                'priority' => $input['priority'] ?? $case->priority,
+                'assign_to_me' => $input['assign_to_me'] ?? true,
+            ], $actor, $case);
+        }
+
+        return ['opened' => $opened, 'skipped' => $skipped];
+    }
+
     public function attachCase(Investigation $investigation, SafetyCase $case, User $actor): SafetyCase
     {
         if ($case->investigation_id === $investigation->id) {
@@ -90,6 +151,8 @@ final class InvestigationService
             'case' => $case->reference,
             'previous' => $case->getOriginal('investigation_id'),
         ]);
+
+        $this->pages->fromCase($investigation, $case);
 
         $case->loadMissing('subjects');
         foreach ($case->subjects as $subject) {

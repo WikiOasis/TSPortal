@@ -105,6 +105,7 @@ export const SANCTION_TYPES = [
 	{ value: 'block', label: 'Block on some wikis', wikis: true, account: true },
 	{ value: 'lock', label: 'Disable account', wikis: false, account: true },
 	{ value: 'wiki-deletion', label: 'Delete a wiki', wikis: true, account: false },
+	{ value: 'page-deletion', label: 'Delete pages', wikis: false, account: false, pages: true, hidden: true },
 	{ value: 'other', label: 'Log something else', wikis: false, account: true, custom: true }
 ];
 

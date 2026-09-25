@@ -8,12 +8,15 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\InvestigationResource;
 use App\Models\Investigation;
 use App\Models\InvestigationNote;
+use App\Models\InvestigationPage;
 use App\Models\SafetyCase;
 use App\Models\Sanction;
 use App\Models\Subject;
 use App\Models\User;
 use App\Services\Safety\BulkActions;
+use App\Services\Safety\InvestigationPages;
 use App\Services\Safety\InvestigationService;
+use App\Services\Safety\Pages;
 use App\Services\Safety\Timeline;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -26,6 +29,7 @@ class InvestigationController extends Controller
         private readonly InvestigationService $investigations,
         private readonly Timeline $timeline,
         private readonly BulkActions $bulk,
+        private readonly InvestigationPages $pages,
     ) {}
 
     public function index(Request $request): AnonymousResourceCollection
@@ -80,9 +84,9 @@ class InvestigationController extends Controller
     public function show(Investigation $investigation): InvestigationResource
     {
         $investigation->load([
-            'opener', 'closer', 'assignee', 'subjects', 'notes.author',
-            'cases' => fn ($q) => $q->orderBy('created_at'),
-            'sanctions' => fn ($q) => $q->orderByDesc('issued_at')->with(['subject', 'issuer']),
+            'opener', 'closer', 'assignee', 'subjects', 'notes.author', 'pages.safetyCase',
+            'cases' => fn ($q) => $q->orderBy('created_at')->with('subjects'),
+            'sanctions' => fn ($q) => $q->orderByDesc('issued_at')->with(['subject', 'issuer', 'promptedBy']),
             'dataRemovals' => fn ($q) => $q->orderByDesc('created_at'),
         ]);
 
@@ -114,6 +118,51 @@ class InvestigationController extends Controller
             'id' => $investigation->id,
             'reference' => $investigation->reference,
             'title' => $investigation->title,
+        ], 201);
+    }
+
+    public function fromCases(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'case_ids' => ['required', 'array', 'min:1', 'max:500'],
+            'case_ids.*' => ['integer'],
+            'mode' => ['required', 'string', 'in:'.InvestigationService::MODE_ONE.','.InvestigationService::MODE_EACH],
+            'title' => ['nullable', 'string', 'max:255'],
+            'premise' => ['nullable', 'string', 'max:20000'],
+            'priority' => ['nullable', 'string', 'in:low,normal,high,urgent'],
+            'assign_to_me' => ['nullable', 'boolean'],
+        ]);
+
+        $ids = array_values(array_unique(array_map('intval', $data['case_ids'])));
+        $cases = SafetyCase::query()->whereKey($ids)->get()
+            ->sortBy(fn (SafetyCase $c) => array_search($c->id, $ids, true))
+            ->values();
+
+        if ($cases->count() !== count($ids)) {
+            return response()->json([
+                'error' => 'not-found',
+                'message' => 'One of those reports no longer exists. Reload and try again.',
+            ], 422);
+        }
+
+        try {
+            $outcome = $this->investigations->openForCases(
+                $cases,
+                $request->user(),
+                $data['mode'],
+                $data,
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['error' => 'not-actionable', 'message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'opened' => array_map(fn (Investigation $i) => [
+                'id' => $i->id,
+                'reference' => $i->reference,
+                'title' => $i->title,
+            ], $outcome['opened']),
+            'skipped' => $outcome['skipped'],
         ], 201);
     }
 
@@ -263,6 +312,85 @@ class InvestigationController extends Controller
             'skipped' => $report['skipped'],
             'data' => $this->show($investigation->refresh()),
         ]);
+    }
+
+    public function previewPages(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'text' => ['required', 'string', 'max:100000'],
+            'wiki' => ['nullable', 'string', 'max:64'],
+        ]);
+
+        $read = Pages::inText($data['text'], $data['wiki'] ?? null);
+
+        return response()->json(['data' => $read['pages'], 'skipped' => $read['skipped']]);
+    }
+
+    public function addPages(Request $request, Investigation $investigation): JsonResponse
+    {
+        $data = $request->validate([
+            'text' => ['nullable', 'string', 'max:100000'],
+            'wiki' => ['nullable', 'string', 'max:64'],
+            'pages' => ['nullable', 'array', 'max:'.InvestigationPages::MAX_ADD],
+            'pages.*.wiki' => ['required', 'string', 'max:64'],
+            'pages.*.title' => ['required', 'string', 'max:255'],
+            'note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $read = Pages::inText((string) ($data['text'] ?? ''), $data['wiki'] ?? null);
+
+        try {
+            $pages = Pages::unique([...Pages::normalise((array) ($data['pages'] ?? [])), ...$read['pages']]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['error' => 'not-a-page', 'message' => $e->getMessage()], 422);
+        }
+
+        if ($pages === []) {
+            return response()->json([
+                'error' => 'nothing-named',
+                'message' => 'No pages could be read from that.',
+                'skipped' => $read['skipped'],
+            ], 422);
+        }
+
+        if (count($pages) > InvestigationPages::MAX_ADD) {
+            return response()->json([
+                'error' => 'too-many',
+                'message' => sprintf('That is more than %d pages. Do it in smaller batches.', InvestigationPages::MAX_ADD),
+            ], 422);
+        }
+
+        $report = $this->pages->add($investigation, $pages, $request->user(), note: $data['note'] ?? null);
+
+        return response()->json([
+            'added' => count($report['added']),
+            'skipped' => [...$read['skipped'], ...$report['skipped']],
+            'data' => $this->show($investigation->refresh()),
+        ]);
+    }
+
+    public function refreshPages(Request $request, Investigation $investigation): JsonResponse
+    {
+        $data = $request->validate([
+            'page_ids' => ['nullable', 'array', 'max:'.InvestigationPages::MAX_ADD],
+            'page_ids.*' => ['integer'],
+        ]);
+
+        $query = $investigation->pages();
+        if (! empty($data['page_ids'])) {
+            $query->whereKey($data['page_ids']);
+        }
+
+        $outcome = $this->pages->fetch($query->limit(InvestigationPages::MAX_ADD)->get());
+
+        return response()->json($outcome + ['data' => $this->show($investigation->refresh())]);
+    }
+
+    public function removePage(Investigation $investigation, InvestigationPage $page): InvestigationResource
+    {
+        $this->pages->remove($investigation, $page);
+
+        return $this->show($investigation->refresh());
     }
 
     public function preview(Request $request): JsonResponse

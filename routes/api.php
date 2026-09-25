@@ -98,6 +98,7 @@ Route::prefix('portal')->name('portal.')->group(function () {
 
         Route::get('/investigations', [Portal\InvestigationController::class, 'index'])->name('investigations.index');
         Route::post('/investigations', [Portal\InvestigationController::class, 'store'])->name('investigations.store');
+        Route::post('/investigations/from-cases', [Portal\InvestigationController::class, 'fromCases'])->name('investigations.from-cases');
         Route::get('/investigations/{investigation}', [Portal\InvestigationController::class, 'show'])->name('investigations.show');
         Route::patch('/investigations/{investigation}', [Portal\InvestigationController::class, 'update'])->name('investigations.update');
         Route::get('/investigations/{investigation}/timeline', [Portal\InvestigationController::class, 'timeline'])->name('investigations.timeline');
@@ -106,6 +107,13 @@ Route::prefix('portal')->name('portal.')->group(function () {
         Route::post('/investigations/{investigation}/subjects/bulk', [Portal\InvestigationController::class, 'addSubjects'])->name('investigations.subjects.bulk');
         Route::post('/investigations/subjects/preview', [Portal\InvestigationController::class, 'preview'])->name('investigations.subjects.preview');
         Route::post('/investigations/{investigation}/bulk-actions', [Portal\InvestigationController::class, 'bulkAction'])->name('investigations.bulk-actions');
+        Route::post('/investigations/pages/preview', [Portal\InvestigationController::class, 'previewPages'])->name('investigations.pages.preview');
+        Route::post('/investigations/{investigation}/pages', [Portal\InvestigationController::class, 'addPages'])->name('investigations.pages.add');
+        Route::post('/investigations/{investigation}/pages/refresh', [Portal\InvestigationController::class, 'refreshPages'])->name('investigations.pages.refresh');
+        Route::delete('/investigations/{investigation}/pages/{page}', [Portal\InvestigationController::class, 'removePage'])
+            ->scopeBindings()
+            ->name('investigations.pages.remove');
+        Route::post('/investigations/{investigation}/page-deletions', [Portal\PageDeletionController::class, 'store'])->name('investigations.page-deletions');
         Route::delete('/investigations/{investigation}/subjects/{subject}', [Portal\InvestigationController::class, 'removeSubject'])->name('investigations.subjects.remove');
         Route::post('/investigations/{investigation}/cases', [Portal\InvestigationController::class, 'attachCase'])->name('investigations.cases.attach');
         Route::delete('/investigations/{investigation}/cases/{case}', [Portal\InvestigationController::class, 'detachCase'])->name('investigations.cases.detach');

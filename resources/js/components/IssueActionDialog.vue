@@ -196,7 +196,7 @@ const wikiChips = ref( [] );
 const knownWikis = ref( [] );
 const wikisKnown = ref( true );
 
-const sanctionTypes = SANCTION_TYPES;
+const sanctionTypes = SANCTION_TYPES.filter( ( t ) => !t.hidden );
 
 const reasonCategories = [ { value: null, label: 'Not recorded' }, ...ACTION_REASONS ];
 const supported = computed( () => session.wiki?.supported_actions ?? [] );

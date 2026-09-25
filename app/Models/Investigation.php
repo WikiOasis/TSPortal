@@ -121,6 +121,11 @@ class Investigation extends Model
         return $this->hasMany(Sanction::class, 'investigation_id');
     }
 
+    public function pages(): HasMany
+    {
+        return $this->hasMany(InvestigationPage::class, 'investigation_id');
+    }
+
     public function dataRemovals(): HasMany
     {
         return $this->hasMany(DataRemoval::class, 'investigation_id');

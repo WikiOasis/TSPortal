@@ -57,6 +57,7 @@ final class CaseService
         }
 
         $about = $this->aboutFrom($roles, $answers);
+        $pages = Pages::fromSubmission($roles, $answers, $input['wiki'] ?? null);
         $categories = $this->categoriesFrom($input);
 
         $type = $this->appealTypeFor($type, $categories);
@@ -66,7 +67,7 @@ final class CaseService
 
         $subjectLine = $this->subjectLine($input, $type, $roles, $answers);
 
-        $case = DB::transaction(function () use ($type, $anonymous, $automated, $input, $answers, $roles, $reporter, $about, $subjectLine, $appeal, $appealed, $categories) {
+        $case = DB::transaction(function () use ($type, $anonymous, $automated, $input, $answers, $roles, $reporter, $about, $pages, $subjectLine, $appeal, $appealed, $categories) {
             $reference = SafetyCase::nextReference($subjectLine);
 
             $case = SafetyCase::create([
@@ -81,6 +82,7 @@ final class CaseService
                 'wiki' => $input['wiki'] ?? null,
                 'answers' => $answers ?: null,
                 'about' => $about ?: null,
+                'pages' => $pages ?: null,
                 'sanction_id' => $appealed?->id,
 
                 'appeal_link_source' => $type === SafetyCase::TYPE_APPEAL ? $appeal->source : null,

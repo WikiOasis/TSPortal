@@ -106,6 +106,13 @@ class SanctionController extends Controller
             'investigation_reference' => ['required', 'string', 'max:32'],
         ]);
 
+        if ($data['type'] === Sanction::TYPE_PAGE_DELETION) {
+            return response()->json([
+                'error' => 'use-page-deletions',
+                'message' => 'Pages are deleted from the pages on an investigation, which also tells their editors.',
+            ], 422);
+        }
+
         $subject ??= isset($data['subject_id']) ? Subject::find($data['subject_id']) : null;
 
         $needsAdmin = in_array($data['type'], [Sanction::TYPE_LOCK, Sanction::TYPE_WIKI_DELETION], true);

@@ -28,7 +28,8 @@ final class SanctionService
     /**
      * @param  array{type: string, scope?: ?string, wikis?: ?list<string>, reason: string,
      *               internal_reason?: ?string, reason_category?: ?string,
-     *               expires_at?: ?string, appealable?: bool}  $input
+     *               expires_at?: ?string, appealable?: bool,
+     *               pages?: ?list<array{wiki: string, title: string}>, prompted_by_id?: ?int}  $input
      */
     public function issue(
         ?Subject $subject,
@@ -43,6 +44,27 @@ final class SanctionService
         }
 
         $wikis = array_values(array_filter((array) ($input['wikis'] ?? [])));
+        $pages = null;
+
+        if (in_array($type, Sanction::PAGE_TARGETED, true)) {
+            $pages = Pages::normalise((array) ($input['pages'] ?? []));
+
+            if ($pages === []) {
+                throw new \InvalidArgumentException('Deleting pages needs at least one page to delete.');
+            }
+
+            if (count($pages) > Pages::MAX_PER_ACTION) {
+                throw new \InvalidArgumentException(sprintf(
+                    'That is %d pages. Delete at most %d in one go.',
+                    count($pages),
+                    Pages::MAX_PER_ACTION,
+                ));
+            }
+
+            $wikis = array_map('strval', array_keys(Pages::byWiki($pages)));
+        } elseif (isset($input['pages'])) {
+            $pages = Pages::normalise((array) $input['pages']) ?: null;
+        }
 
         if (in_array($type, Sanction::WIKI_TARGETED, true)) {
             if ($wikis === []) {
@@ -66,9 +88,11 @@ final class SanctionService
             throw new \InvalidArgumentException('A logged action needs a description of what was done.');
         }
 
-        $target = $subject?->username ?? implode(', ', $wikis);
+        $target = $subject?->username ?? ($pages !== null && $type === Sanction::TYPE_PAGE_DELETION
+            ? Pages::describe($pages, 120)
+            : implode(', ', $wikis));
 
-        $sanction = DB::transaction(function () use ($subject, $input, $issuer, $case, $investigation, $type, $wikis, $target) {
+        $sanction = DB::transaction(function () use ($subject, $input, $issuer, $case, $investigation, $type, $wikis, $pages, $target) {
             $reference = Sanction::nextReference(sprintf(
                 '%s: %s',
                 Sanction::LABELS[$type] ?? $type,
@@ -80,12 +104,14 @@ final class SanctionService
                 'subject_id' => $subject?->id,
                 'case_id' => $case?->id,
                 'investigation_id' => $investigation->id,
+                'prompted_by_id' => $input['prompted_by_id'] ?? null,
                 'type' => $type,
                 'label' => $type === Sanction::TYPE_OTHER && ! empty($input['label'])
                     ? $input['label']
                     : (Sanction::LABELS[$type] ?? $type),
                 'scope' => $input['scope'] ?? null,
                 'wikis' => $wikis !== [] ? $wikis : null,
+                'pages' => $pages,
                 'reason' => $input['reason'],
                 'internal_reason' => $input['internal_reason'] ?? null,
 
@@ -112,6 +138,8 @@ final class SanctionService
         Audit::log('sanction.issued', $sanction, [
             'subject' => $subject?->username,
             'wikis' => $wikis,
+            'pages' => $pages !== null ? count($pages) : null,
+            'prompted_by' => isset($input['prompted_by_id']) ? Sanction::query()->whereKey($input['prompted_by_id'])->value('reference') : null,
             'type' => $type,
             'reason_category' => $sanction->reason_category,
             'expires' => $input['expires_at'] ?? null,
@@ -172,7 +200,7 @@ final class SanctionService
 
         $this->sync->pushSanction($sanction);
 
-        if (in_array($sanction->type, [Sanction::TYPE_LOCK, Sanction::TYPE_BLOCK, Sanction::TYPE_WIKI_DELETION], true)) {
+        if (in_array($sanction->type, [Sanction::TYPE_LOCK, Sanction::TYPE_BLOCK, Sanction::TYPE_WIKI_DELETION, Sanction::TYPE_PAGE_DELETION], true)) {
             $this->enforce($sanction, unlock: true);
         }
 
@@ -275,6 +303,9 @@ final class SanctionService
                 'reason' => $sanction->reason,
                 'expiry' => $sanction->expires_at?->toIso8601String() ?? 'never',
                 'centralauth' => $wantsCentralLock ? 1 : 0,
+                'pages' => $sanction->pages !== null && $sanction->isPageTargeted()
+                    ? json_encode(Pages::byWiki($sanction->pages), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                    : null,
             ]);
 
             $partial = $wantsCentralLock && ! $this->centralLockConfirmed($action, $result);
@@ -398,6 +429,7 @@ final class SanctionService
         return match ($sanction->type) {
             Sanction::TYPE_BLOCK => 'unblock',
             Sanction::TYPE_WIKI_DELETION => 'undelete-wiki',
+            Sanction::TYPE_PAGE_DELETION => 'undelete-page',
             default => 'unlock',
         };
     }

@@ -156,6 +156,26 @@
 								<cdx-info-chip v-for="name in item.about" :key="name">{{ name }}</cdx-info-chip>
 							</div>
 
+							<div v-if="( item.pages ?? [] ).length" class="ts-inline ts-case-pages">
+								<span class="ts-meta">Pages:</span>
+								<cdx-info-chip
+									v-for="page in item.pages"
+									:key="`${ page.wiki }|${ page.title }`"
+									:status="page.deleted ? 'success' : 'notice'"
+									:title="page.deleted ? `Deleted under ${ page.deleted.reference }` : undefined"
+								>
+									{{ page.title }} <span class="ts-mono">({{ page.wiki }})</span>
+									<template v-if="page.deleted"> · deleted</template>
+								</cdx-info-chip>
+								<router-link
+									v-if="item.investigation"
+									:to="{ name: 'investigation', params: { id: item.investigation.id }, hash: '#pages' }"
+								>
+									Pages on {{ item.investigation.reference }}
+								</router-link>
+								<span v-else class="ts-meta">Open an investigation to act on these pages.</span>
+							</div>
+
 							<div class="ts-inline" style="margin-top: 0.75rem;">
 								<span class="ts-meta">Filed under:</span>
 								<cdx-info-chip
@@ -708,7 +728,11 @@ function changeAssignee( value ) {
 }
 
 function onFileOpened( investigation ) {
-	router.push( { name: 'investigation', params: { id: investigation.id } } );
+	router.push( {
+		name: 'investigation',
+		params: { id: investigation.id },
+		hash: ( item.value?.pages ?? [] ).length ? '#pages' : ''
+	} );
 }
 
 function onMerged( response ) {

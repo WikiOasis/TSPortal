@@ -8,6 +8,7 @@ use App\Models\CaseComment;
 use App\Models\SafetyCase;
 use App\Models\Sanction;
 use App\Models\Subject;
+use App\Services\Safety\Pages;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -31,6 +32,7 @@ class CaseResource extends JsonResource
             'anonymous' => $this->anonymous,
             'wiki' => $this->wiki,
             'about' => $this->about ?? [],
+            'pages' => $this->when(! $request->routeIs('*.index'), fn () => $this->pagesWithState(), $this->pages ?? []),
 
             'category' => $this->category,
             'category_group' => $this->category_group,
@@ -193,6 +195,7 @@ class CaseResource extends JsonResource
                 'id' => $s->id,
                 'reference' => $s->reference,
                 'label' => $s->label,
+                'type' => $s->type,
                 'active' => $s->isInForce(),
             ])->all()),
 
@@ -203,5 +206,39 @@ class CaseResource extends JsonResource
                 'error' => $this->sync_error,
             ],
         ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function pagesWithState(): array
+    {
+        $pages = (array) ($this->pages ?? []);
+        if ($pages === []) {
+            return [];
+        }
+
+        $deleted = [];
+
+        Sanction::query()
+            ->where('type', Sanction::TYPE_PAGE_DELETION)
+            ->where('active', true)
+            ->where(fn ($q) => $q->where('case_id', $this->id)
+                ->when($this->investigation_id !== null, fn ($q) => $q->orWhere('investigation_id', $this->investigation_id)))
+            ->orderBy('issued_at')
+            ->get()
+            ->each(function (Sanction $s) use (&$deleted) {
+                foreach ((array) ($s->pages ?? []) as $page) {
+                    $deleted[Pages::key($page)] ??= [
+                        'id' => $s->id,
+                        'reference' => $s->reference,
+                        'push_state' => $s->push_state,
+                    ];
+                }
+            });
+
+        return array_map(fn (array $page) => $page + [
+            'deleted' => $deleted[Pages::key($page)] ?? null,
+        ], $pages);
     }
 }

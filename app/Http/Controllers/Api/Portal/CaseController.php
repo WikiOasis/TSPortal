@@ -46,7 +46,7 @@ class CaseController extends Controller
             'per_page' => ['nullable', 'integer', 'min:5', 'max:100'],
         ]);
 
-        $query = SafetyCase::query()->with(['reporter', 'assignee', 'investigation', 'categories', 'automatedReview']);
+        $query = SafetyCase::query()->with(['reporter', 'assignee', 'investigation', 'categories', 'automatedReview', 'subjects']);
 
         if (! empty($filters['type'])) {
             $kinds = array_values(array_intersect(
