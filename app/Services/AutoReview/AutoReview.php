@@ -237,20 +237,14 @@ final class AutoReview
             'classified_at' => now(),
         ])->save();
 
-        $announce = $review->effectiveBucket() === AutomatedReview::BUCKET_URGENT && $case->isOpen();
+        SlackNotifier::quietly(fn () => $this->applyPriority($review, $case));
 
-        $record = function () use ($review, $case) {
-            Audit::log('autoreview.classified', $case, [
-                'bucket' => $review->bucket,
-                'confidence' => $review->confidence,
-                'model' => $review->model,
-                'source' => $review->evidence_source,
-            ], actorLabel: 'automated triage');
-
-            $this->applyPriority($review, $case);
-        };
-
-        $announce ? $record() : SlackNotifier::quietly($record);
+        Audit::log('autoreview.classified', $case->refresh(), [
+            'bucket' => $review->bucket,
+            'confidence' => $review->confidence,
+            'model' => $review->model,
+            'source' => $review->evidence_source,
+        ], actorLabel: 'automated triage');
 
         return $review->refresh();
     }
@@ -279,16 +273,14 @@ final class AutoReview
             'overridden_at' => $bucket === $review->bucket ? null : now(),
         ])->save();
 
-        SlackNotifier::quietly(function () use ($review, $case, $before, $actor) {
-            Audit::log('autoreview.overridden', $case, [
-                'from' => $before,
-                'to' => $review->effectiveBucket(),
-                'model' => $review->bucket,
-                'by' => $actor->username,
-            ]);
+        SlackNotifier::quietly(fn () => $this->applyPriority($review, $case));
 
-            $this->applyPriority($review, $case);
-        });
+        Audit::log('autoreview.overridden', $case->refresh(), [
+            'from' => $before,
+            'to' => $review->effectiveBucket(),
+            'model' => $review->bucket,
+            'by' => $actor->username,
+        ]);
 
         return $review->refresh();
     }
@@ -323,6 +315,8 @@ final class AutoReview
             'confirmed_by' => $actor->id,
             'confirmed_at' => now(),
         ])->save();
+
+        Audit::log('autoreview.taken', $case, ['bucket' => $review->effectiveBucket(), 'by' => $actor->username]);
 
         return $review->refresh();
     }
@@ -471,6 +465,10 @@ final class AutoReview
             }
         });
 
+        if ($folded > 0) {
+            Audit::log('autoreview.folded', null, ['count' => $folded, 'by' => $actor?->username]);
+        }
+
         return $folded;
     }
 
@@ -618,6 +616,12 @@ final class AutoReview
         }
 
         $review->forceFill(['state' => AutomatedReview::STATE_MERGED])->save();
+
+        Audit::log('autoreview.folded', $earlier->case, [
+            'count' => 1,
+            'duplicate' => $case->reference,
+            'revision' => $review->revision_id,
+        ], actorLabel: 'automated triage');
 
         return true;
     }

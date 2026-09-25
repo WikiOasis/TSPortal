@@ -6,6 +6,7 @@ namespace App\Services\Slack;
 
 use App\Jobs\PostToSlack;
 use App\Models\AuditLog;
+use App\Models\AutomatedReview;
 use App\Models\SafetyCase;
 use App\Services\Safety\Triage;
 use Illuminate\Database\Eloquent\Model;
@@ -50,7 +51,12 @@ final class SlackNotifier
             $payload = self::payload($log, $target, $urgent);
 
             if ((bool) config('slack.queue', true)) {
-                PostToSlack::dispatch($webhook, $payload);
+                $queue = (string) config('slack.queue_name', '');
+                $pending = PostToSlack::dispatch($webhook, $payload);
+
+                if ($queue !== '') {
+                    $pending->onQueue($queue);
+                }
 
                 return;
             }
@@ -199,7 +205,7 @@ final class SlackNotifier
             'case.assigned' => sprintf('%s assigned%s', $ref, isset($meta['assignee'])
                 ? ' to '.$meta['assignee']
                 : ' to nobody'),
-            'case.categorised' => sprintf('%s re-filed under %s', $ref, self::list($meta['to'] ?? [])),
+            'case.categorised' => sprintf('%s re-filed under %s', $ref, self::list($meta['labels'] ?? $meta['to'] ?? [])),
             'case.escalated' => sprintf(
                 '%s escalated to %s — filed under a category that means risk to life',
                 $ref,
@@ -244,7 +250,28 @@ final class SlackNotifier
             ),
             'staff.updated' => sprintf('Staff account changed: %s', $meta['username'] ?? 'someone'),
 
-            'autoreview.classified' => sprintf('Automated flag %s was sorted as needing review quickly', $ref),
+            'autoreview.classified' => sprintf(
+                'Automated triage sorted %s as %s%s',
+                $ref,
+                self::bucket($meta['bucket'] ?? null),
+                is_numeric($meta['confidence'] ?? null) ? sprintf(' (%d%% sure)', (int) round((float) $meta['confidence'] * 100)) : '',
+            ),
+            'autoreview.overridden' => sprintf(
+                '%s moved from %s to %s%s',
+                $ref,
+                self::bucket($meta['from'] ?? null),
+                self::bucket($meta['to'] ?? null),
+                $who !== null ? ' by '.$who : '',
+            ),
+            'autoreview.taken' => sprintf('%s taken%s', $ref, $who !== null ? ' by '.$who : ''),
+            'autoreview.folded' => isset($meta['duplicate'])
+                ? sprintf('*%s* flagged the same revision again and was merged into %s', $meta['duplicate'], $ref)
+                : sprintf(
+                    '%d repeated automated %s merged into earlier ones%s',
+                    (int) ($meta['count'] ?? 0),
+                    (int) ($meta['count'] ?? 0) === 1 ? 'flag' : 'flags',
+                    $who !== null ? ' by '.$who : '',
+                ),
             'autoreview.batch-closed' => sprintf(
                 '%d automated %s closed with no action%s',
                 (int) ($meta['count'] ?? 0),
@@ -349,6 +376,13 @@ final class SlackNotifier
         }
 
         return $base;
+    }
+
+    private static function bucket(mixed $bucket): string
+    {
+        $label = is_string($bucket) ? (AutomatedReview::BUCKET_LABELS[$bucket] ?? null) : null;
+
+        return $label !== null ? '_'.Str::lower($label).'_' : '_unsorted_';
     }
 
     /** @param mixed $values */

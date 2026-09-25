@@ -38,4 +38,5 @@ return [
     'portal_url' => rtrim((string) env('SLACK_PORTAL_URL', env('APP_URL', 'http://localhost:8000')), '/'),
     'timeout' => (int) env('SLACK_TIMEOUT', 5),
     'queue' => (bool) env('SLACK_ACTIVITY_QUEUE', true),
+    'queue_name' => (string) env('SLACK_QUEUE', ''),
 ];

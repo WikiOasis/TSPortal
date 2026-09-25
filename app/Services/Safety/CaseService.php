@@ -387,6 +387,7 @@ final class CaseService
         Audit::log('case.categorised', $case, [
             'from' => $before,
             'to' => $ids,
+            'labels' => array_column($resolved, 'label'),
             'by' => $staff?->username,
             'threat_to_life' => $case->threat_to_life,
         ]);

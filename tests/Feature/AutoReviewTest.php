@@ -418,4 +418,49 @@ class AutoReviewTest extends TestCase
             ->assertJsonPath('automation.urgent', 1)
             ->assertJsonPath('automation.unassigned_urgent', 1);
     }
+
+    #[Test]
+    public function automated_triage_and_the_staff_working_it_are_announced_in_slack(): void
+    {
+        config()->set('slack.enabled', true);
+        config()->set('slack.queue', false);
+        config()->set('slack.webhooks', ['default' => 'https://hooks.slack.test/default']);
+
+        $said = function (): string {
+            $lines = [];
+            foreach (Http::recorded() as [$request]) {
+                if (str_contains($request->url(), 'hooks.slack.test')) {
+                    $lines[] = $request['text'];
+                }
+            }
+
+            return implode("\n", $lines);
+        };
+
+        $this->verdict = 'review';
+        $first = $this->automated(101);
+        $this->verdict = 'unlikely';
+        $second = $this->automated(102);
+        $repeat = $this->automated(102);
+
+        $this->actingAs($this->staff())
+            ->putJson("/api/portal/autoreview/items/{$first->id}/bucket", ['bucket' => 'urgent'])
+            ->assertOk();
+        $this->actingAs($this->staff())
+            ->postJson("/api/portal/autoreview/items/{$first->id}/take")
+            ->assertOk();
+        $this->actingAs($this->staff())
+            ->putJson("/api/portal/cases/{$second->id}/categories", ['categories' => [['id' => 'harassment', 'label' => 'Harassment']]])
+            ->assertOk();
+
+        $text = $said();
+
+        $this->assertStringContainsString("sorted *{$first->reference}* as _needs review_", $text);
+        $this->assertStringContainsString("sorted *{$second->reference}* as _unlikely to need review_", $text);
+        $this->assertStringContainsString("*{$repeat->reference}* flagged the same revision again and was merged into *{$second->reference}*", $text);
+        $this->assertStringContainsString("*{$first->reference}* moved from _needs review_ to _needs review quickly_ by Reviewer", $text);
+        $this->assertStringContainsString("*{$first->reference}* taken by Reviewer", $text);
+        $this->assertStringContainsString("*{$second->reference}* re-filed under Harassment", $text);
+        $this->assertStringNotContainsString('priority by', $text, 'the priority triage sets is part of the triage line, not its own message');
+    }
 }
