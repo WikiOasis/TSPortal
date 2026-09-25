@@ -10,6 +10,17 @@
 			</template>
 		</PageHeader>
 
+		<cdx-message v-if="automation && automation.open" type="notice" :icon="cdxIconRobot" :allow-user-dismiss="false" class="ts-ar-strip">
+			<p>
+				<strong>{{ automation.open.toLocaleString() }} automated flags are open</strong>:
+				{{ ( automation.urgent ?? 0 ).toLocaleString() }} need review quickly,
+				{{ ( automation.review ?? 0 ).toLocaleString() }} need review,
+				{{ ( automation.unlikely ?? 0 ).toLocaleString() }} are unlikely to need it.
+				They're listed here with everything else, but they're faster to work through in Automation.
+			</p>
+			<cdx-button action="progressive" @click="$router.push( { name: 'automation' } )">Open Automation</cdx-button>
+		</cdx-message>
+
 		<div class="ts-toolbar">
 			<cdx-field class="ts-toolbar__search">
 				<template #label>Search</template>
@@ -136,7 +147,11 @@
 					<router-link :to="{ name: 'case', params: { id: row.id } }">
 						{{ row.subject }}
 					</router-link>
-					<span v-if="row.anonymous" class="ts-meta"> · filed anonymously</span>
+					<span v-if="row.automated" class="ts-meta">
+						·
+						<router-link :to="{ name: 'automation', query: { case: row.id } }">review in Automation</router-link>
+					</span>
+					<span v-else-if="row.anonymous" class="ts-meta"> · filed anonymously</span>
 					<div v-if="row.investigation" class="ts-meta">
 						<router-link
 							:to="{ name: 'investigation', params: { id: row.investigation.id } }"
@@ -152,8 +167,15 @@
 					<cdx-info-chip v-if="row.threat_to_life" status="error">
 						Threat to life
 					</cdx-info-chip>
+					<cdx-info-chip
+						v-else-if="row.automated && bucket( row.autoreview?.bucket )"
+						:status="bucket( row.autoreview.bucket ).chip"
+						:title="row.autoreview.reason ?? undefined"
+					>
+						Jev · {{ bucket( row.autoreview.bucket ).short.toLowerCase() }}
+					</cdx-info-chip>
 					<cdx-info-chip v-else-if="row.automated" status="notice">
-						Automated
+						Jev
 					</cdx-info-chip>
 					<cdx-info-chip v-else-if="primaryCategory( row )">
 						{{ primaryCategory( row ) }}
@@ -224,7 +246,7 @@
 import { computed, inject, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
-	CdxButton, CdxCheckbox, CdxField, CdxInfoChip, CdxProgressBar, CdxSearchInput,
+	CdxButton, CdxCheckbox, CdxField, CdxInfoChip, CdxMessage, CdxProgressBar, CdxSearchInput,
 	CdxSelect, CdxTable
 } from '@wikimedia/codex';
 import PageHeader from '../components/PageHeader.vue';
@@ -232,6 +254,8 @@ import LoadError from '../components/LoadError.vue';
 import OpenInvestigationDialog from '../components/OpenInvestigationDialog.vue';
 import { api } from '../lib/api.js';
 import { ago, chipTone, dateTime, PRIORITIES, TYPE_LABELS } from '../lib/format.js';
+import { bucket } from '../lib/autoreview.js';
+import { cdxIconRobot } from '@wikimedia/codex-icons';
 
 const route = useRoute();
 const router = useRouter();
@@ -247,6 +271,7 @@ const selected = ref( [] );
 const showOpenFile = ref( false );
 const showHelp = ref( false );
 const help = ref( [] );
+const automation = ref( null );
 
 const kinds = ref(
 	typeof route.query.type === 'string' ? route.query.type.split( ',' ).filter( Boolean ) : []
@@ -258,7 +283,7 @@ const filters = reactive( {
 	assignee: null,
 	priority: null,
 	threat: route.query.threat ? 1 : null,
-	source: [ 'people', 'automated' ].includes( route.query.source ) ? route.query.source : null,
+	source: [ 'people', 'automated', 'automated:urgent', 'automated:review', 'automated:unlikely', 'automated:waiting' ].includes( route.query.source ) ? route.query.source : null,
 	investigation: route.query.file === 'none' ? 'none' : null,
 	sort: 'oldest',
 	page: 1
@@ -336,7 +361,11 @@ const threatOptions = [
 const sourceOptions = [
 	{ value: null, label: 'Any' },
 	{ value: 'people', label: 'Filed by people' },
-	{ value: 'automated', label: 'Automated' }
+	{ value: 'automated', label: 'Automated' },
+	{ value: 'automated:urgent', label: 'Automated: needs review quickly' },
+	{ value: 'automated:review', label: 'Automated: needs review' },
+	{ value: 'automated:unlikely', label: 'Automated: unlikely to need review' },
+	{ value: 'automated:waiting', label: 'Automated: not sorted yet' }
 ];
 
 const priorityFilterOptions = [
@@ -383,7 +412,8 @@ async function reload() {
 		assignee: filters.assignee,
 		priority: filters.priority,
 		threat: filters.threat,
-		source: filters.source,
+		source: filters.source?.split( ':' )[ 0 ] ?? null,
+		bucket: filters.source?.split( ':' )[ 1 ] ?? null,
 		investigation: filters.investigation,
 		sort: filters.sort,
 		page: filters.page
@@ -545,9 +575,18 @@ async function loadHelp() {
 	}
 }
 
+async function loadAutomation() {
+	try {
+		automation.value = ( await api.autoReview() ).counts;
+	} catch ( e ) {
+		automation.value = null;
+	}
+}
+
 onMounted( () => {
 	reload();
 	loadTeam();
 	loadHelp();
+	loadAutomation();
 } );
 </script>

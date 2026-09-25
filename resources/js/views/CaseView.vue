@@ -53,10 +53,34 @@
                 as appropriate with internal procedure.
 			</cdx-message>
 
-			<cdx-message v-if="item.automated" type="notice" :allow-user-dismiss="false">
-				Raised by automated scanning, not filed by a person. Check what was flagged
-				before acting on it.
-			</cdx-message>
+			<section v-if="item.automated && autoReviewRow" class="ts-section ts-ar-case">
+				<div class="ts-ar-case__head">
+					<h2 class="ts-section__title">
+						<cdx-icon :icon="cdxIconRobot" size="small" />
+						Raised by Jev, not by a person
+					</h2>
+					<span class="ts-inline">
+						<router-link
+							v-if="item.status !== 'closed' && item.status !== 'rejected' && item.status !== 'duplicate'"
+							:to="{ name: 'automation', query: { case: item.id } }"
+						>
+							Review in Automation
+						</router-link>
+						<cdx-menu-button
+							v-model:selected="bucketChoice"
+							:menu-items="bucketMenu"
+							:disabled="reviewBusy"
+							aria-label="Change the AI's bucket"
+							@update:selected="onBucketMenu"
+						>
+							Change bucket
+						</cdx-menu-button>
+					</span>
+				</div>
+				<div class="ts-panel">
+					<AutoReviewDetail :row="autoReviewRow" :show-header="false" />
+				</div>
+			</section>
 
 			<cdx-message v-if="item.duplicate_of" type="notice" :allow-user-dismiss="false">
 				<p>
@@ -95,7 +119,7 @@
 				Answering this one answers them all.
 			</cdx-message>
 
-			<cdx-message v-if="item.anonymous" type="notice" :allow-user-dismiss="true">
+			<cdx-message v-if="item.anonymous && !item.automated" type="notice" :allow-user-dismiss="true">
 				This was filed anonymously. Comments will not reach the reporter.
 			</cdx-message>
 
@@ -384,10 +408,10 @@
 import { computed, inject, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import {
-	CdxButton, CdxDialog, CdxField, CdxIcon, CdxInfoChip, CdxMessage, CdxProgressBar,
+	CdxButton, CdxDialog, CdxField, CdxIcon, CdxInfoChip, CdxMenuButton, CdxMessage, CdxProgressBar,
 	CdxSelect, CdxTextArea
 } from '@wikimedia/codex';
-import { cdxIconAdd, cdxIconCopy } from '@wikimedia/codex-icons';
+import { cdxIconAdd, cdxIconCopy, cdxIconRobot } from '@wikimedia/codex-icons';
 import PageHeader from '../components/PageHeader.vue';
 import LoadError from '../components/LoadError.vue';
 import StatusChip from '../components/StatusChip.vue';
@@ -396,7 +420,9 @@ import DataRequestPanel from '../components/DataRequestPanel.vue';
 import AppealPanel from '../components/AppealPanel.vue';
 import OpenInvestigationDialog from '../components/OpenInvestigationDialog.vue';
 import MarkDuplicateDialog from '../components/MarkDuplicateDialog.vue';
+import AutoReviewDetail from '../components/AutoReviewDetail.vue';
 import { api } from '../lib/api.js';
+import { BUCKETS } from '../lib/autoreview.js';
 import { remember } from '../lib/recents.js';
 import { ago, dateTime, fileSize, PRIORITIES, TYPE_LABELS } from '../lib/format.js';
 import { session } from '../lib/session.js';
@@ -424,6 +450,78 @@ const editingCategories = ref( false );
 const savingCategories = ref( false );
 
 const categoryText = ref( '' );
+const reviewBusy = ref( false );
+const bucketChoice = ref( null );
+
+const bucketMenu = computed( () => [
+	...BUCKETS.filter( ( b ) => b.value !== item.value?.autoreview?.bucket ).map( ( b ) => ( { value: b.value, label: `Move to ${ b.label.toLowerCase() }` } ) ),
+	{ value: 'again', label: 'Ask the AI again' }
+] );
+
+function onBucketMenu( value ) {
+	bucketChoice.value = null;
+	if ( value === 'again' ) {
+		sortAgain();
+	} else if ( value ) {
+		moveBucket( value );
+	}
+}
+
+const autoReviewRow = computed( () => {
+	const data = item.value;
+	if ( !data?.automated ) {
+		return null;
+	}
+	const answers = data.answers ?? {};
+	const categories = data.categories ?? [];
+	return {
+		id: data.id,
+		reference: data.reference,
+		subject: data.subject,
+		filed: data.filed,
+		wiki: data.wiki,
+		category: ( categories.find( ( c ) => c.primary ) ?? categories[ 0 ] )?.label ?? null,
+		edit_summary: typeof answers.edit_summary === 'string' ? answers.edit_summary : null,
+		jev: {
+			harm: answers.jev?.harm ?? null,
+			vandalism: answers.jev?.vandalism ?? null
+		},
+		review: data.autoreview
+			? {
+				...data.autoreview,
+				links: {
+					...data.autoreview.links,
+					revision: data.autoreview.links.revision ?? answers.revision_url ?? null
+				}
+			}
+			: null
+	};
+} );
+
+async function moveBucket( value ) {
+	reviewBusy.value = true;
+	try {
+		await api.autoReviewBucket( props.id, value );
+		notify( `Moved to ${ BUCKETS.find( ( b ) => b.value === value )?.label.toLowerCase() }.` );
+		await load();
+	} catch ( e ) {
+		notify( e.message, 'error' );
+	} finally {
+		reviewBusy.value = false;
+	}
+}
+
+async function sortAgain() {
+	reviewBusy.value = true;
+	try {
+		const response = await api.autoReviewClassify( { case_ids: [ Number( props.id ) ] } );
+		notify( response.queued ? 'Sent to be sorted again. Reload in a minute to see the answer.' : 'This report cannot be sorted again while it is closed.' );
+	} catch ( e ) {
+		notify( e.message, 'error' );
+	} finally {
+		reviewBusy.value = false;
+	}
+}
 
 const statusOptions = computed( () => {
 	const options = [

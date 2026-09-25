@@ -46,6 +46,24 @@
 						<template v-if="data.open_items.unassigned">
 							· {{ data.open_items.unassigned }} unassigned
 						</template>
+						<template v-if="data.open_items.automated">
+							· {{ data.open_items.automated }} automated
+						</template>
+					</div>
+				</router-link>
+
+				<router-link
+					v-if="data.automation && data.automation.open"
+					:to="{ name: 'automation' }"
+					class="ts-panel ts-stat ts-stat--link"
+					:class="{ 'ts-stat--alert': data.automation.unassigned_urgent > 0 }"
+				>
+					<div class="ts-stat__value">{{ data.automation.urgent.toLocaleString() }}</div>
+					<div class="ts-stat__label">Automated reports need a review</div>
+					<div class="ts-stat__detail">
+						{{ data.automation.review.toLocaleString() }} need review ·
+						{{ data.automation.unlikely.toLocaleString() }} unlikely
+						<template v-if="data.automation.waiting"> · {{ data.automation.waiting.toLocaleString() }} not sorted yet</template>
 					</div>
 				</router-link>
 
@@ -99,7 +117,7 @@
 
 			<div class="ts-split ts-section">
 				<section>
-					<h2 class="ts-section__title">Just in</h2>
+					<h2 class="ts-section__title">Just in from people</h2>
 					<div class="ts-panel ts-scroll">
 						<cdx-table
 							caption="Most recent submissions"

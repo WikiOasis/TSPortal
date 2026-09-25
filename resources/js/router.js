@@ -4,6 +4,7 @@ import { session } from './lib/session.js';
 import DashboardView from './views/DashboardView.vue';
 import QueueView from './views/QueueView.vue';
 import CaseView from './views/CaseView.vue';
+import AutomationView from './views/AutomationView.vue';
 import InvestigationsView from './views/InvestigationsView.vue';
 import InvestigationView from './views/InvestigationView.vue';
 import DataRemovalsView from './views/DataRemovalsView.vue';
@@ -24,6 +25,8 @@ import NotFoundView from './views/NotFoundView.vue';
 const routes = [
 	{ path: '/', name: 'dashboard', component: DashboardView, meta: { title: 'Dashboard' } },
 	{ path: '/queue', name: 'queue', component: QueueView, meta: { title: 'Queue' } },
+	{ path: '/automation', name: 'automation', component: AutomationView, meta: { title: 'Automation' } },
+	{ path: '/automated', redirect: ( to ) => ( { name: 'automation', query: to.query } ) },
 	{ path: '/cases/:id', name: 'case', component: CaseView, props: true, meta: { title: 'Case' } },
 
 	{ path: '/files', name: 'investigations', component: InvestigationsView, meta: { title: 'Investigations' } },
@@ -50,7 +53,15 @@ const routes = [
 const router = createRouter( {
 	history: createWebHistory(),
 	routes,
-	scrollBehavior: ( to, from, saved ) => saved ?? { top: 0 }
+	scrollBehavior: ( to, from, saved ) => {
+		if ( saved ) {
+			return saved;
+		}
+		if ( to.name === from.name && to.path === from.path ) {
+			return false;
+		}
+		return { top: 0 };
+	}
 } );
 
 router.beforeEach( async ( to ) => {

@@ -63,6 +63,7 @@
         <env name="SLACK_WEBHOOK_ADMIN" value=""/>
 
         <!-- The suite exercises the wiki-facing API, which is signed. -->
+        <env name="OPENROUTER_API_KEY" value=""/>
         <env name="MW_S2S_SECRET" value="test-shared-secret-for-the-suite"/>
         <env name="MW_S2S_PUSH_ENABLED" value="false"/>
         <env name="MW_SUPPORTED_ACTIONS" value="lock,unlock,warn,note"/>

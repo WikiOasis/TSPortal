@@ -44,6 +44,12 @@ class CaseResource extends JsonResource
 
             'threat_to_life' => $this->isThreatToLife(),
             'automated' => (bool) $this->automated,
+            'autoreview' => $this->when(
+                (bool) $this->automated && $this->relationLoaded('automatedReview') && $this->automatedReview !== null,
+                fn () => (new AutomatedReviewResource($this->automatedReview))
+                    ->withEvidence(! $request->routeIs('*.index'))
+                    ->resolve($request),
+            ),
 
             'duplicate_of' => $this->whenLoaded('duplicateOf', fn () => $this->duplicateOf === null ? null : [
                 'id' => $this->duplicateOf->id,

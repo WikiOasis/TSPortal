@@ -40,12 +40,13 @@ class CaseController extends Controller
 
             'threat' => ['nullable', 'boolean'],
             'source' => ['nullable', 'string', 'in:people,automated'],
+            'bucket' => ['nullable', 'string', 'in:urgent,review,unlikely,waiting'],
 
             'sort' => ['nullable', 'string', 'in:oldest,newest,updated,priority,status,reference'],
             'per_page' => ['nullable', 'integer', 'min:5', 'max:100'],
         ]);
 
-        $query = SafetyCase::query()->with(['reporter', 'assignee', 'investigation', 'categories']);
+        $query = SafetyCase::query()->with(['reporter', 'assignee', 'investigation', 'categories', 'automatedReview']);
 
         if (! empty($filters['type'])) {
             $kinds = array_values(array_intersect(
@@ -80,6 +81,13 @@ class CaseController extends Controller
         if (! empty($filters['source'])) {
             $query->where('automated', $filters['source'] === 'automated');
         }
+        if (! empty($filters['bucket'])) {
+            $query->where('automated', true);
+
+            $filters['bucket'] === 'waiting'
+                ? $query->whereDoesntHave('automatedReview', fn (Builder $q) => $q->whereRaw('COALESCE(staff_bucket, bucket) IS NOT NULL'))
+                : $query->whereHas('automatedReview', fn (Builder $q) => $q->inBucket($filters['bucket']));
+        }
         if (! empty($filters['category'])) {
             $wanted = array_values(array_filter(array_map('trim', explode(',', $filters['category']))));
 
@@ -109,6 +117,7 @@ class CaseController extends Controller
             'duplicateMarker',
             'duplicates' => fn ($q) => $q->orderBy('created_at'),
             'categories',
+            'automatedReview.overrider',
             'subjects',
             'attachments',
             'sanctionsIssued',
@@ -275,12 +284,16 @@ class CaseController extends Controller
             SafetyCase::STATUS_INVESTIGATING,
         ]);
 
-        $query->orderByRaw('CASE WHEN automated = ? AND status IN (?, ?, ?) THEN 1 ELSE 0 END', [
-            true,
-            SafetyCase::STATUS_RECEIVED,
-            SafetyCase::STATUS_IN_REVIEW,
-            SafetyCase::STATUS_INVESTIGATING,
-        ]);
+        $query->orderByRaw('CASE WHEN automated = ? AND status IN (?, ?, ?) THEN 1 + COALESCE(('
+            .'SELECT CASE COALESCE(automated_reviews.staff_bucket, automated_reviews.bucket) '
+            ."WHEN 'urgent' THEN 0 WHEN 'review' THEN 1 WHEN 'unlikely' THEN 3 END "
+            .'FROM automated_reviews WHERE automated_reviews.case_id = cases.id'
+            .'), 2) ELSE 0 END', [
+                true,
+                SafetyCase::STATUS_RECEIVED,
+                SafetyCase::STATUS_IN_REVIEW,
+                SafetyCase::STATUS_INVESTIGATING,
+            ]);
 
         match ($sort) {
             'newest' => $query->orderByDesc('created_at'),

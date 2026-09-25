@@ -12,13 +12,14 @@ use App\Models\OutboundEvent;
 use App\Models\PortalObject;
 use App\Models\SafetyCase;
 use App\Models\Sanction;
+use App\Services\AutoReview\AutoReview;
 use App\Services\MediaWiki\WikiClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
-    public function __invoke(Request $request): JsonResponse
+    public function __invoke(Request $request, AutoReview $autoReview): JsonResponse
     {
         $byStatus = SafetyCase::query()
             ->selectRaw('status, count(*) as total')
@@ -42,7 +43,7 @@ class DashboardController extends Controller
         $open = SafetyCase::query()->whereIn('status', SafetyCase::OPEN_STATUSES);
         $liveFiles = Investigation::query()->live();
 
-        $stale = (clone $open)->where('updated_at', '<', now()->subDays(14))->count();
+        $stale = (clone $open)->where('automated', false)->where('updated_at', '<', now()->subDays(14))->count();
         $dueReview = Investigation::query()->dueForReview()->count();
 
         $brokenActions = Sanction::query()
@@ -61,6 +62,16 @@ class DashboardController extends Controller
                 'cases' => (clone $open)->count(),
                 'investigations' => (clone $liveFiles)->count(),
                 'unassigned' => (clone $open)->whereNull('assigned_to')->count(),
+                'automated' => (clone $open)->where('automated', true)->count(),
+            ],
+
+            'automation' => $autoReview->counts() + [
+                'enabled' => $autoReview->enabled(),
+                'unassigned_urgent' => (clone $open)
+                    ->where('automated', true)
+                    ->whereNull('assigned_to')
+                    ->whereHas('automatedReview', fn ($q) => $q->inBucket('urgent'))
+                    ->count(),
             ],
 
             'threat_to_life' => [
@@ -120,6 +131,7 @@ class DashboardController extends Controller
                 ])->all(),
 
             'recent' => SafetyCase::query()
+                ->where('automated', false)
                 ->with('reporter')
                 ->orderByDesc('created_at')
                 ->limit(8)

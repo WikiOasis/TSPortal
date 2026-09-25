@@ -75,6 +75,18 @@ Route::prefix('portal')->name('portal.')->group(function () {
 
         Route::put('/cases/{case}/categories', [Portal\CaseController::class, 'categorise'])->name('cases.categorise');
 
+        Route::get('/autoreview', [Portal\AutoReviewController::class, 'summary'])->name('autoreview.summary');
+        Route::get('/autoreview/stats', [Portal\AutoReviewController::class, 'stats'])->name('autoreview.stats');
+        Route::get('/autoreview/items', [Portal\AutoReviewController::class, 'items'])->name('autoreview.items');
+        Route::get('/autoreview/items/{case}', [Portal\AutoReviewController::class, 'show'])->name('autoreview.show');
+        Route::get('/autoreview/groups', [Portal\AutoReviewController::class, 'groups'])->name('autoreview.groups');
+        Route::post('/autoreview/classify', [Portal\AutoReviewController::class, 'classify'])->name('autoreview.classify');
+        Route::post('/autoreview/close', [Portal\AutoReviewController::class, 'close'])->name('autoreview.close');
+        Route::post('/autoreview/merge', [Portal\AutoReviewController::class, 'merge'])->name('autoreview.merge');
+        Route::post('/autoreview/fold', [Portal\AutoReviewController::class, 'fold'])->name('autoreview.fold');
+        Route::post('/autoreview/items/{case}/take', [Portal\AutoReviewController::class, 'take'])->name('autoreview.take');
+        Route::put('/autoreview/items/{case}/bucket', [Portal\AutoReviewController::class, 'override'])->name('autoreview.override');
+
         Route::get('/attachments/{attachment}', [Portal\AttachmentController::class, 'show'])->name('attachments.show');
 
         Route::put('/cases/{case}/appeal/action', [Portal\AppealController::class, 'link'])->name('appeals.link');

@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class SafetyCase extends Model
 {
@@ -271,6 +272,11 @@ class SafetyCase extends Model
     public function sanctionsIssued(): HasMany
     {
         return $this->hasMany(Sanction::class, 'case_id');
+    }
+
+    public function automatedReview(): HasOne
+    {
+        return $this->hasOne(AutomatedReview::class, 'case_id');
     }
 
     public function isOpen(): bool

@@ -106,7 +106,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { CdxButton, CdxIcon } from '@wikimedia/codex';
 import {
 	cdxIconAdd, cdxIconArticle, cdxIconBlock, cdxIconChart, cdxIconFlag, cdxIconHistory,
-	cdxIconMenu, cdxIconSearch, cdxIconTrash, cdxIconUserAvatar, cdxIconUserGroup,
+	cdxIconMenu, cdxIconRobot, cdxIconSearch, cdxIconTrash, cdxIconUserAvatar, cdxIconUserGroup,
 	cdxIconViewDetails
 } from '@wikimedia/codex-icons';
 import OpenInvestigationDialog from './OpenInvestigationDialog.vue';
@@ -231,6 +231,7 @@ function openFile() {
 const links = computed( () => [
 	{ name: 'dashboard', label: 'Dashboard', icon: cdxIconViewDetails, match: [ 'dashboard' ] },
 	{ name: 'queue', label: 'Queue', icon: cdxIconFlag, match: [ 'queue', 'case' ] },
+	{ name: 'automation', label: 'Automation', icon: cdxIconRobot, match: [ 'automation' ] },
 	{ name: 'investigations', label: 'Investigations', icon: cdxIconUserGroup, match: [ 'investigations', 'investigation' ] },
 	{ name: 'subjects', label: 'Accounts', icon: cdxIconUserAvatar, match: [ 'subjects', 'subject' ] },
 	{ name: 'sanctions', label: 'Actions', icon: cdxIconBlock, match: [ 'sanctions' ] },

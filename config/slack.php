@@ -17,6 +17,7 @@ return [
         'comment' => 'cases',
         'attachment' => 'cases',
         'appeal' => 'cases',
+        'autoreview' => 'cases',
         'sanction' => 'actions',
         'data-request' => 'data',
         'data-removal' => 'data',

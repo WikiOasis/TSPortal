@@ -19,7 +19,7 @@ final class DuplicateReports
 
     public function __construct(private readonly CaseService $cases) {}
 
-    public function merge(SafetyCase $duplicate, SafetyCase $canonical, User $actor, ?string $note = null): SafetyCase
+    public function merge(SafetyCase $duplicate, SafetyCase $canonical, ?User $actor, ?string $note = null): SafetyCase
     {
         $canonical = $this->rootOf($canonical);
 
@@ -52,7 +52,7 @@ final class DuplicateReports
             $duplicate->forceFill([
                 'duplicate_of_id' => $canonical->id,
                 'duplicate_note' => $note,
-                'duplicate_marked_by' => $actor->id,
+                'duplicate_marked_by' => $actor?->id,
                 'duplicate_marked_at' => now(),
             ])->save();
 

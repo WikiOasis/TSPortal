@@ -6,13 +6,17 @@ namespace App\Http\Controllers\Api\Wiki;
 
 use App\Http\Controllers\Controller;
 use App\Models\SafetyCase;
+use App\Services\AutoReview\AutoReview;
 use App\Services\Safety\CaseService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class SubmissionController extends Controller
 {
-    public function __construct(private readonly CaseService $cases) {}
+    public function __construct(
+        private readonly CaseService $cases,
+        private readonly AutoReview $autoReview,
+    ) {}
 
     public function store(Request $request): JsonResponse
     {
@@ -43,6 +47,8 @@ class SubmissionController extends Controller
         $data['wiki'] ??= $request->attributes->get('wiki');
 
         $case = $this->cases->createFromSubmission($data);
+
+        $this->autoReview->received($case);
 
         return response()->json([
             'reference' => $case->reference,

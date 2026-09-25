@@ -14,10 +14,29 @@ use Throwable;
 
 final class SlackNotifier
 {
+    private static int $quiet = 0;
+
+    /**
+     * @template T
+     *
+     * @param  callable(): T  $work
+     * @return T
+     */
+    public static function quietly(callable $work): mixed
+    {
+        self::$quiet++;
+
+        try {
+            return $work();
+        } finally {
+            self::$quiet--;
+        }
+    }
+
     public static function announce(AuditLog $log, ?Model $target = null): void
     {
         try {
-            if (! self::wanted($log->action)) {
+            if (self::$quiet > 0 || ! self::wanted($log->action)) {
                 return;
             }
 
@@ -224,6 +243,20 @@ final class SlackNotifier
                 ($meta['stored'] ?? 0) === 1 ? 'check' : 'checks',
             ),
             'staff.updated' => sprintf('Staff account changed: %s', $meta['username'] ?? 'someone'),
+
+            'autoreview.classified' => sprintf('Automated flag %s was sorted as needing review quickly', $ref),
+            'autoreview.batch-closed' => sprintf(
+                '%d automated %s closed with no action%s',
+                (int) ($meta['count'] ?? 0),
+                (int) ($meta['count'] ?? 0) === 1 ? 'report' : 'reports',
+                $who !== null ? ' by '.$who : '',
+            ),
+            'autoreview.merged' => sprintf(
+                '%d automated %s merged into %s',
+                (int) ($meta['count'] ?? 0),
+                (int) ($meta['count'] ?? 0) === 1 ? 'report' : 'reports',
+                $ref,
+            ),
             'auth.blocked' => sprintf(':warning: Sign-in refused for %s', $meta['username'] ?? 'an account'),
 
             default => sprintf(

@@ -130,6 +130,18 @@ export const api = {
 
 	analytics: ( params ) => request( 'GET', `/portal/analytics${ query( params ) }` ),
 
+	autoReview: () => request( 'GET', '/portal/autoreview' ),
+	autoReviewStats: () => request( 'GET', '/portal/autoreview/stats' ),
+	autoReviewItems: ( params, options ) => request( 'GET', `/portal/autoreview/items${ query( params ) }`, undefined, options ),
+	autoReviewItem: ( id, options ) => request( 'GET', `/portal/autoreview/items/${ id }`, undefined, options ),
+	autoReviewGroups: ( params ) => request( 'GET', `/portal/autoreview/groups${ query( params ) }` ),
+	autoReviewClassify: ( body ) => request( 'POST', '/portal/autoreview/classify', body ?? {} ),
+	autoReviewClose: ( body ) => request( 'POST', '/portal/autoreview/close', body ),
+	autoReviewMerge: ( body ) => request( 'POST', '/portal/autoreview/merge', body ),
+	autoReviewFold: () => request( 'POST', '/portal/autoreview/fold', {} ),
+	autoReviewTake: ( id ) => request( 'POST', `/portal/autoreview/items/${ id }/take`, {} ),
+	autoReviewBucket: ( id, bucket ) => request( 'PUT', `/portal/autoreview/items/${ id }/bucket`, { bucket } ),
+
 	categoriseCase: ( id, categories ) => request( 'PUT', `/portal/cases/${ id }/categories`, { categories } ),
 
 	checkUserChecks: ( params ) => request( 'GET', `/portal/checkuser${ query( params ) }` ),
