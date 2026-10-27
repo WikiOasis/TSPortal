@@ -245,68 +245,24 @@
 					/>
 
 					<section class="ts-section">
-						<CaseTimeline
+						<ActivityFeed
+							kind="case"
 							:entries="timeline"
 							:loading="timelineLoading"
-							heading="What happened, in order"
+							:replyable="!item.duplicate_of"
+							:item="item"
+							@changed="onTransacted"
 						/>
 					</section>
 
-					<section class="ts-section">
-						<h2 class="ts-section__title">Conversation</h2>
-
-						<div class="ts-panel ts-stack">
-							<p v-if="!item.comments.length" class="ts-meta">Nothing has been said yet.</p>
-
-							<div
-								v-for="comment in item.comments"
-								:key="comment.id"
-								class="ts-comment"
-								:class="`ts-comment--${ comment.visibility }`"
-							>
-								<div class="ts-comment__head">
-									<span class="ts-comment__author">{{ comment.author || 'System' }}</span>
-									<cdx-info-chip :status="comment.visibility === 'internal' ? 'warning' : 'notice'">
-										{{ comment.visibility === 'internal' ? 'Internal note' : 'Seen by the reporter' }}
-									</cdx-info-chip>
-									<span class="ts-meta">{{ dateTime( comment.date ) }}</span>
-								</div>
-								<div class="ts-comment__body">{{ comment.body }}</div>
-							</div>
-						</div>
-
-						<div class="ts-panel ts-stack" style="margin-top: 1rem;">
-							<cdx-field>
-								<template #label>Add to the case</template>
-								<cdx-text-area
-									v-model="draft"
-									placeholder="What you want to say, or what you want the case to remember."
-									rows="4"
-								/>
-							</cdx-field>
-
-							<div class="ts-inline">
-								<cdx-button
-									:disabled="!draft.trim() || saving"
-									@click="postComment( 'internal' )"
-								>
-									Save as internal note
-								</cdx-button>
-								<cdx-button
-									action="progressive"
-									weight="primary"
-									:disabled="!draft.trim() || saving || item.anonymous"
-									@click="postComment( 'public' )"
-								>
-									Reply to the reporter
-								</cdx-button>
-							</div>
-							<p class="ts-meta">
-								A reply is mirrored to the farm, shows on the reporter's
-								Special:SafetyHome, and notifies them. An internal note never
-								leaves this portal.
-							</p>
-						</div>
+					<section v-if="!item.duplicate_of" class="ts-section">
+						<ActivityComposer
+							:key="item.id"
+							kind="case"
+							:item="item"
+							:team="team"
+							@done="onTransacted"
+						/>
 					</section>
 				</div>
 
@@ -314,34 +270,13 @@
 					<div class="ts-panel">
 						<h2 class="ts-section__title">Handling</h2>
 						<div class="ts-stack">
-							<cdx-field>
-								<template #label>Status</template>
-								<cdx-select
-									v-model:selected="statusDraft"
-									:menu-items="statusOptions"
-									@update:selected="changeStatus"
-								/>
-							</cdx-field>
-
-							<cdx-field>
-								<template #label>With</template>
-								<cdx-select
-									v-model:selected="assigneeDraft"
-									:menu-items="assigneeOptions"
-									@update:selected="changeAssignee"
-								/>
-							</cdx-field>
-
-							<cdx-field>
-								<template #label>Priority</template>
-								<cdx-select
-									v-model:selected="priorityDraft"
-									:menu-items="priorityOptions"
-									@update:selected="changePriority"
-								/>
-							</cdx-field>
-
 							<dl class="ts-dl">
+								<dt>Status</dt>
+								<dd><StatusChip kind="case" :value="item.status" /></dd>
+								<dt>With</dt>
+								<dd>{{ item.assignee ? item.assignee.username : 'Nobody' }}</dd>
+								<dt>Priority</dt>
+								<dd><StatusChip kind="priority" :value="item.priority" /></dd>
 								<dt>Filed</dt>
 								<dd>{{ dateTime( item.filed ) }}</dd>
 								<dt>Last change</dt>
@@ -409,12 +344,6 @@
 			@primary="saveCategories"
 			@default="editingCategories = false"
 		>
-			<p class="ts-meta">
-				These are counted into transparency reports, so they are the words the report
-				will use. The first is the main one. Removing them all is allowed and means
-				nobody has said.
-			</p>
-
 			<cdx-field>
 				<template #label>Categories</template>
 				<template #description>One per line, as they should read.</template>
@@ -429,13 +358,14 @@ import { computed, inject, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import {
 	CdxButton, CdxDialog, CdxField, CdxIcon, CdxInfoChip, CdxMenuButton, CdxMessage, CdxProgressBar,
-	CdxSelect, CdxTextArea
+	CdxTextArea
 } from '@wikimedia/codex';
 import { cdxIconAdd, cdxIconCopy, cdxIconRobot } from '@wikimedia/codex-icons';
 import PageHeader from '../components/PageHeader.vue';
 import LoadError from '../components/LoadError.vue';
 import StatusChip from '../components/StatusChip.vue';
-import CaseTimeline from '../components/CaseTimeline.vue';
+import ActivityFeed from '../components/ActivityFeed.vue';
+import ActivityComposer from '../components/ActivityComposer.vue';
 import DataRequestPanel from '../components/DataRequestPanel.vue';
 import AppealPanel from '../components/AppealPanel.vue';
 import OpenInvestigationDialog from '../components/OpenInvestigationDialog.vue';
@@ -444,7 +374,7 @@ import AutoReviewDetail from '../components/AutoReviewDetail.vue';
 import { api } from '../lib/api.js';
 import { BUCKETS } from '../lib/autoreview.js';
 import { remember } from '../lib/recents.js';
-import { ago, dateTime, fileSize, PRIORITIES, TYPE_LABELS } from '../lib/format.js';
+import { ago, dateTime, fileSize, TYPE_LABELS } from '../lib/format.js';
 import { session } from '../lib/session.js';
 
 const props = defineProps( { id: { type: [ String, Number ], required: true } } );
@@ -457,11 +387,6 @@ const timeline = ref( [] );
 const timelineLoading = ref( false );
 const loading = ref( false );
 const error = ref( null );
-const draft = ref( '' );
-const saving = ref( false );
-const statusDraft = ref( null );
-const assigneeDraft = ref( null );
-const priorityDraft = ref( null );
 const showOpenFile = ref( false );
 const showDuplicate = ref( false );
 const unmerging = ref( false );
@@ -543,30 +468,6 @@ async function sortAgain() {
 	}
 }
 
-const statusOptions = computed( () => {
-	const options = [
-		{ value: 'received', label: 'Received' },
-		{ value: 'in-review', label: 'Being read' },
-		{ value: 'investigating', label: 'Under investigation' },
-		{ value: 'action-taken', label: 'Action taken' },
-		{ value: 'closed', label: 'Closed' },
-		{ value: 'rejected', label: 'Closed, no action' }
-	];
-
-	if ( item.value?.status === 'duplicate' ) {
-		options.push( { value: 'duplicate', label: 'Duplicate', disabled: true } );
-	}
-
-	return options;
-} );
-
-const priorityOptions = PRIORITIES;
-
-const assigneeOptions = computed( () => [
-	{ value: null, label: 'Nobody' },
-	...team.value.map( ( u ) => ( { value: u.id, label: u.username } ) )
-] );
-
 const hasAnswers = computed( () => item.value && Object.keys( item.value.answers ?? {} ).length > 0 );
 
 const fileSubjects = computed( () => {
@@ -607,9 +508,6 @@ function renderAnswer( value ) {
 
 function adopt( data ) {
 	item.value = data;
-	statusDraft.value = data.status;
-	assigneeDraft.value = data.assignee?.id ?? null;
-	priorityDraft.value = data.priority;
 	categoryText.value = ( data.categories ?? [] ).map( ( c ) => c.label ).join( '\n' );
 }
 
@@ -694,37 +592,9 @@ async function claim() {
 	}
 }
 
-async function patch( body, said ) {
-	try {
-		const response = await api.updateCase( props.id, body );
-		adopt( response.data );
-		loadTimeline();
-		notify( said );
-	} catch ( e ) {
-		adopt( item.value );
-		notify( e.message, 'error' );
-	}
-}
-
-function changeStatus( value ) {
-	if ( !item.value || value === item.value.status ) {
-		return;
-	}
-	return patch( { status: value }, 'Status changed. The reporter has been told.' );
-}
-
-function changePriority( value ) {
-	if ( !item.value || value === item.value.priority ) {
-		return;
-	}
-	return patch( { priority: value }, 'Priority changed.' );
-}
-
-function changeAssignee( value ) {
-	if ( !item.value || value === ( item.value.assignee?.id ?? null ) ) {
-		return;
-	}
-	return patch( { assigned_to: value }, value ? 'Reassigned.' : 'Unassigned.' );
+function onTransacted( data ) {
+	adopt( data );
+	loadTimeline();
 }
 
 function onFileOpened( investigation ) {
@@ -751,20 +621,6 @@ async function unmerge() {
 		notify( e.message, 'error' );
 	} finally {
 		unmerging.value = false;
-	}
-}
-
-async function postComment( visibility ) {
-	saving.value = true;
-	try {
-		await api.commentOnCase( props.id, { body: draft.value, visibility } );
-		draft.value = '';
-		await load();
-		notify( visibility === 'public' ? 'Sent to the reporter.' : 'Note saved.' );
-	} catch ( e ) {
-		notify( e.message, 'error' );
-	} finally {
-		saving.value = false;
 	}
 }
 

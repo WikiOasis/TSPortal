@@ -67,6 +67,7 @@ Route::prefix('portal')->name('portal.')->group(function () {
         Route::patch('/cases/{case}', [Portal\CaseController::class, 'update'])->name('cases.update');
         Route::post('/cases/{case}/claim', [Portal\CaseController::class, 'claim'])->name('cases.claim');
         Route::post('/cases/{case}/comments', [Portal\CaseController::class, 'comment'])->name('cases.comment');
+        Route::post('/cases/{case}/transactions', [Portal\CaseController::class, 'transact'])->name('cases.transact');
         Route::get('/cases/{case}/timeline', [Portal\CaseController::class, 'timeline'])->name('cases.timeline');
 
         Route::get('/cases/{case}/duplicates/candidates', [Portal\CaseController::class, 'duplicateCandidates'])->name('cases.duplicates.candidates');
@@ -89,6 +90,10 @@ Route::prefix('portal')->name('portal.')->group(function () {
 
         Route::get('/attachments/{attachment}', [Portal\AttachmentController::class, 'show'])->name('attachments.show');
 
+        Route::get('/inline-images/{inlineImage}', [Portal\InlineImageController::class, 'show'])->name('inline-images.show');
+        Route::post('/cases/{case}/images', [Portal\InlineImageController::class, 'forCase'])->name('cases.images');
+        Route::post('/investigations/{investigation}/images', [Portal\InlineImageController::class, 'forInvestigation'])->name('investigations.images');
+
         Route::put('/cases/{case}/appeal/action', [Portal\AppealController::class, 'link'])->name('appeals.link');
         Route::post('/cases/{case}/appeal/decision', [Portal\AppealController::class, 'decide'])->name('appeals.decide');
 
@@ -103,6 +108,7 @@ Route::prefix('portal')->name('portal.')->group(function () {
         Route::patch('/investigations/{investigation}', [Portal\InvestigationController::class, 'update'])->name('investigations.update');
         Route::get('/investigations/{investigation}/timeline', [Portal\InvestigationController::class, 'timeline'])->name('investigations.timeline');
         Route::post('/investigations/{investigation}/notes', [Portal\InvestigationController::class, 'note'])->name('investigations.note');
+        Route::post('/investigations/{investigation}/transactions', [Portal\InvestigationController::class, 'transact'])->name('investigations.transact');
         Route::post('/investigations/{investigation}/subjects', [Portal\InvestigationController::class, 'addSubject'])->name('investigations.subjects.add');
         Route::post('/investigations/{investigation}/subjects/bulk', [Portal\InvestigationController::class, 'addSubjects'])->name('investigations.subjects.bulk');
         Route::post('/investigations/subjects/preview', [Portal\InvestigationController::class, 'preview'])->name('investigations.subjects.preview');

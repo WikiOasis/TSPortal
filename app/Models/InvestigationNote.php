@@ -27,11 +27,16 @@ class InvestigationNote extends Model
         self::KIND_EVIDENCE,
     ];
 
-    protected $fillable = ['investigation_id', 'author_id', 'kind', 'body'];
+    protected $fillable = ['investigation_id', 'reply_to_id', 'author_id', 'kind', 'body'];
 
     public function investigation(): BelongsTo
     {
         return $this->belongsTo(Investigation::class);
+    }
+
+    public function replyTo(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'reply_to_id');
     }
 
     public function author(): BelongsTo

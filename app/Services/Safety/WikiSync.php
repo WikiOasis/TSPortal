@@ -10,6 +10,7 @@ use App\Models\OutboundEvent;
 use App\Models\SafetyCase;
 use App\Models\Sanction;
 use App\Models\Subject;
+use Illuminate\Support\Str;
 
 final class WikiSync
 {
@@ -80,7 +81,7 @@ final class WikiSync
             return null;
         }
 
-        $comment->loadMissing('safetyCase.reporter');
+        $comment->loadMissing('safetyCase.reporter', 'replyTo');
         $case = $comment->safetyCase;
 
         if ($case === null || $case->anonymous || $case->reporter_subject_id === null) {
@@ -100,8 +101,28 @@ final class WikiSync
                 'body' => $comment->body,
                 'date' => $comment->created_at?->toIso8601String(),
                 'notify' => $comment->author_type !== CaseComment::AUTHOR_SUBJECT,
+                'reply_to' => $this->replyPayload($comment),
             ],
         ]);
+    }
+
+    /**
+     * @return array{comment_id: int, author: string, author_label: ?string, body: string}|null
+     */
+    private function replyPayload(CaseComment $comment): ?array
+    {
+        $parent = $comment->replyTo;
+
+        if ($parent === null || ! $parent->isPublic()) {
+            return null;
+        }
+
+        return [
+            'comment_id' => $parent->id,
+            'author' => $parent->author_type === CaseComment::AUTHOR_SUBJECT ? 'you' : 'staff',
+            'author_label' => $parent->author_label,
+            'body' => Str::limit((string) $parent->body, 2000),
+        ];
     }
 
     public function pushSanction(Sanction $sanction): ?OutboundEvent

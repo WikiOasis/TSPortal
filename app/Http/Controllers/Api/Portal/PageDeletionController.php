@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api\Portal;
 use App\Http\Controllers\Controller;
 use App\Models\Investigation;
 use App\Models\Sanction;
+use App\Services\Safety\InlineImages;
 use App\Services\Safety\PageDeletions;
 use App\Services\Safety\Pages;
 use Illuminate\Http\JsonResponse;
@@ -38,6 +39,9 @@ class PageDeletionController extends Controller
             'notice_type' => ['nullable', 'string', 'in:'.implode(',', Sanction::NOTICE_TYPES)],
             'notice_reason' => ['nullable', 'string', 'max:2000'],
         ]);
+
+        InlineImages::refuseIn($data['reason'], 'reason');
+        InlineImages::refuseIn($data['notice_reason'] ?? null, 'notice_reason');
 
         try {
             $outcome = $this->deletions->run($investigation, $request->user(), $data);

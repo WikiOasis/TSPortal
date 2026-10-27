@@ -22,6 +22,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class InvestigationController extends Controller
 {
@@ -98,7 +100,7 @@ class InvestigationController extends Controller
         $data = $request->validate([
             'title' => ['nullable', 'string', 'max:255'],
             'premise' => ['nullable', 'string', 'max:20000'],
-            'priority' => ['nullable', 'string', 'in:low,normal,high,urgent'],
+            'priority' => ['nullable', 'string', 'in:'.implode(',', Investigation::PRIORITIES)],
             'case_id' => ['nullable', 'integer', 'exists:cases,id'],
             'review_at' => ['nullable', 'date'],
             'assign_to_me' => ['nullable', 'boolean'],
@@ -184,12 +186,20 @@ class InvestigationController extends Controller
             );
         }
 
-        foreach (['title', 'premise', 'priority', 'review_at'] as $field) {
+        foreach (['title', 'premise'] as $field) {
             if (array_key_exists($field, $data)) {
                 $investigation->{$field} = $data[$field];
             }
         }
         $investigation->save();
+
+        if (isset($data['priority'])) {
+            $this->investigations->setPriority($investigation, $data['priority']);
+        }
+
+        if (array_key_exists('review_at', $data)) {
+            $this->investigations->setReviewDate($investigation, $data['review_at']);
+        }
 
         if (isset($data['status'])) {
             $this->investigations->setStatus($investigation, $data['status'], $request->user());
@@ -203,8 +213,6 @@ class InvestigationController extends Controller
         $data = $request->validate([
             'outcome' => ['nullable', 'string', 'in:'.implode(',', Investigation::OUTCOMES)],
             'findings' => ['nullable', 'string', 'max:50000'],
-            'disclosable' => ['nullable', 'boolean'],
-            'message' => ['nullable', 'string', 'max:20000'],
         ]);
 
         $this->investigations->conclude($investigation, $request->user(), $data);
@@ -249,6 +257,88 @@ class InvestigationController extends Controller
             'body' => $note->body,
             'date' => $note->created_at?->toIso8601String(),
         ], 201);
+    }
+
+    public function transact(Request $request, Investigation $investigation): InvestigationResource
+    {
+        $data = $request->validate([
+            'note' => ['nullable', 'string', 'max:50000'],
+            'kind' => ['nullable', 'string', 'in:'.implode(',', InvestigationNote::KINDS)],
+            'reply_to' => ['nullable', 'integer'],
+
+            'actions' => ['nullable', 'array', 'max:10'],
+            'actions.*.type' => ['required', 'string', 'distinct', 'in:status,assign,claim,priority,review'],
+            'actions.*.value' => ['nullable'],
+        ]);
+
+        $note = trim((string) ($data['note'] ?? ''));
+        $actions = $data['actions'] ?? [];
+
+        if ($note === '' && $actions === []) {
+            throw ValidationException::withMessages(['note' => 'Write something, or add an action.']);
+        }
+
+        $replyTo = null;
+        if (isset($data['reply_to'])) {
+            $replyTo = $investigation->notes()->whereKey($data['reply_to'])->first()
+                ?? throw ValidationException::withMessages(['reply_to' => 'That note is not on this file.']);
+
+            if ($actions !== []) {
+                throw ValidationException::withMessages([
+                    'reply_to' => 'Reply on its own; make changes to the file separately.',
+                ]);
+            }
+        }
+
+        $types = array_column($actions, 'type');
+        if (in_array('claim', $types, true) && in_array('assign', $types, true)) {
+            throw ValidationException::withMessages(['actions' => 'Take it or give it to someone, not both.']);
+        }
+
+        $changes = [];
+        foreach ($actions as $i => $action) {
+            $value = $action['value'] ?? null;
+            $bad = fn (string $message) => throw ValidationException::withMessages(["actions.{$i}.value" => $message]);
+
+            $changes[] = match ($action['type']) {
+                'status' => ! $investigation->isLive()
+                    ? $bad('Reopen the file before changing its state.')
+                    : (is_string($value) && in_array($value, Investigation::LIVE_STATUSES, true)
+                        ? fn () => $this->investigations->setStatus($investigation, $value, $request->user())
+                        : $bad('Choose open or monitoring.')),
+                'priority' => is_string($value) && in_array($value, Investigation::PRIORITIES, true)
+                    ? fn () => $this->investigations->setPriority($investigation, $value)
+                    : $bad('Choose a priority.'),
+                'review' => $value === null || (is_string($value) && strtotime($value) !== false)
+                    ? fn () => $this->investigations->setReviewDate($investigation, $value)
+                    : $bad('Choose a date.'),
+                'assign' => $value === null
+                    ? fn () => $this->investigations->assign($investigation, null)
+                    : (($user = User::query()->whereKey((int) $value)->first()) !== null
+                        ? fn () => $this->investigations->assign($investigation, $user)
+                        : $bad('Choose who it is with.')),
+                'claim' => fn () => $this->investigations->assign($investigation, $request->user()),
+            };
+        }
+
+        DB::transaction(function () use ($changes, $investigation, $note, $data, $request, $replyTo) {
+            foreach ($changes as $change) {
+                $change();
+                $investigation->refresh();
+            }
+
+            if ($note !== '') {
+                $this->investigations->note(
+                    $investigation,
+                    $note,
+                    $data['kind'] ?? InvestigationNote::KIND_NOTE,
+                    $request->user(),
+                    $replyTo,
+                );
+            }
+        });
+
+        return $this->show($investigation->refresh());
     }
 
     public function addSubject(Request $request, Investigation $investigation): InvestigationResource

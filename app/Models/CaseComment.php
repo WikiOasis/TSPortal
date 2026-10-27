@@ -22,14 +22,18 @@ class CaseComment extends Model
 
     public const VISIBILITY_INTERNAL = 'internal';
 
+    public const KIND_STATUS = 'status';
+
     protected $fillable = [
         'case_id',
+        'reply_to_id',
         'author_type',
         'author_user_id',
         'author_subject_id',
         'author_label',
         'body',
         'visibility',
+        'kind',
     ];
 
     protected function casts(): array
@@ -40,6 +44,11 @@ class CaseComment extends Model
     public function safetyCase(): BelongsTo
     {
         return $this->belongsTo(SafetyCase::class, 'case_id');
+    }
+
+    public function replyTo(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'reply_to_id');
     }
 
     public function author(): BelongsTo

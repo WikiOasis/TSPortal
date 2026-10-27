@@ -133,43 +133,25 @@ class InvestigationTest extends TestCase
     }
 
     #[Test]
-    public function findings_are_never_sent_to_the_reporter(): void
+    public function concluding_says_nothing_to_the_reporter(): void
     {
         $case = $this->report();
-        $service = app(InvestigationService::class);
-        $file = $service->open(['title' => 'A file'], $this->staff(), $case);
+        $file = app(InvestigationService::class)->open(['title' => 'A file'], $this->staff(), $case);
 
-        $service->conclude($file, $this->staff(), [
-            'outcome' => Investigation::OUTCOME_WARNED,
-            'findings' => 'The other account is a sock of a locked one; do not tell the reporter.',
-            'disclosable' => true,
-            'message' => 'We looked into this and have acted. Thank you for reporting it.',
-        ]);
+        $this->actingAs($this->staff())
+            ->postJson("/api/portal/investigations/{$file->id}/conclude", [
+                'outcome' => Investigation::OUTCOME_WARNED,
+                'findings' => 'The other account is a sock of a locked one; do not tell the reporter.',
+                'disclosable' => true,
+                'message' => 'We looked into this and have acted.',
+            ])
+            ->assertOk();
 
-        $bodies = $case->comments()->pluck('body')->implode("\n");
+        $this->assertSame(SafetyCase::STATUS_ACTION_TAKEN, $case->refresh()->status);
+        $public = $case->comments()->where('visibility', CaseComment::VISIBILITY_PUBLIC)->pluck('body')->implode("\n");
 
-        $this->assertStringContainsString('We looked into this and have acted', $bodies);
-        $this->assertStringNotContainsString('sock of a locked one', $bodies);
-    }
-
-    #[Test]
-    public function nothing_is_said_to_the_reporter_unless_the_outcome_is_disclosable(): void
-    {
-        $case = $this->report();
-        $service = app(InvestigationService::class);
-        $file = $service->open(['title' => 'A file'], $this->staff(), $case);
-
-        $service->conclude($file, $this->staff(), [
-            'outcome' => Investigation::OUTCOME_WARNED,
-            'message' => 'This should not be sent.',
-        ]);
-
-        $this->assertFalse(
-            $case->comments()
-                ->where('visibility', CaseComment::VISIBILITY_PUBLIC)
-                ->where('body', 'This should not be sent.')
-                ->exists()
-        );
+        $this->assertStringNotContainsString('We looked into this', $public);
+        $this->assertStringNotContainsString('sock of a locked one', $public);
     }
 
     #[Test]

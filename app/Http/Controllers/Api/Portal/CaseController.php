@@ -6,17 +6,21 @@ namespace App\Http\Controllers\Api\Portal;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CaseResource;
+use App\Models\CaseComment;
 use App\Models\SafetyCase;
 use App\Models\User;
 use App\Services\Safety\CaseSearch;
 use App\Services\Safety\CaseService;
 use App\Services\Safety\DuplicateReports;
+use App\Services\Safety\InlineImages;
 use App\Services\Safety\Timeline;
 use App\Services\Safety\Triage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class CaseController extends Controller
 {
@@ -317,13 +321,17 @@ class CaseController extends Controller
         $data = $request->validate([
             'body' => ['required', 'string', 'min:1', 'max:20000'],
             'visibility' => ['required', 'string', 'in:public,internal'],
+            'reply_to' => ['nullable', 'integer'],
         ]);
+
+        $replyTo = $this->checkedComment($case, $data['body'], $data['visibility'], $data['reply_to'] ?? null, 'body');
 
         $comment = $this->cases->comment(
             $case,
             $data['body'],
             $data['visibility'],
             staff: $request->user(),
+            replyTo: $replyTo,
         );
 
         return response()->json([
@@ -332,7 +340,105 @@ class CaseController extends Controller
             'author_type' => $comment->author_type,
             'body' => $comment->body,
             'visibility' => $comment->visibility,
+            'reply_to' => $comment->reply_to_id,
             'date' => $comment->created_at?->toIso8601String(),
         ], 201);
+    }
+
+    public function transact(Request $request, SafetyCase $case): CaseResource
+    {
+        $data = $request->validate([
+            'comment' => ['nullable', 'string', 'max:20000'],
+            'visibility' => ['required_with:comment', 'nullable', 'string', 'in:public,internal'],
+            'reply_to' => ['nullable', 'integer'],
+
+            'actions' => ['nullable', 'array', 'max:10'],
+            'actions.*.type' => ['required', 'string', 'distinct', 'in:status,assign,claim,priority'],
+            'actions.*.value' => ['nullable'],
+        ]);
+
+        $comment = trim((string) ($data['comment'] ?? ''));
+        $actions = $data['actions'] ?? [];
+
+        if ($comment === '' && $actions === []) {
+            throw ValidationException::withMessages([
+                'comment' => 'Write something, or add an action.',
+            ]);
+        }
+
+        $replyTo = $comment !== ''
+            ? $this->checkedComment($case, $comment, $data['visibility'], $data['reply_to'] ?? null, 'comment')
+            : null;
+
+        if (isset($data['reply_to']) && $actions !== []) {
+            throw ValidationException::withMessages([
+                'reply_to' => 'Reply on its own; make changes to the case separately.',
+            ]);
+        }
+
+        $types = array_column($actions, 'type');
+        if (in_array('claim', $types, true) && in_array('assign', $types, true)) {
+            throw ValidationException::withMessages([
+                'actions' => 'Take it or give it to someone, not both.',
+            ]);
+        }
+
+        $changes = [];
+        foreach ($actions as $i => $action) {
+            $value = $action['value'] ?? null;
+
+            $changes[] = match ($action['type']) {
+                'status' => is_string($value) && in_array($value, array_diff(SafetyCase::STATUSES, [SafetyCase::STATUS_DUPLICATE]), true)
+                    ? fn () => $this->cases->setStatus($case, $value, $request->user())
+                    : throw ValidationException::withMessages(["actions.{$i}.value" => 'Choose a status.']),
+                'priority' => is_string($value) && in_array($value, SafetyCase::PRIORITIES, true)
+                    ? fn () => $this->cases->setPriority($case, $value)
+                    : throw ValidationException::withMessages(["actions.{$i}.value" => 'Choose a priority.']),
+                'assign' => $value === null
+                    ? fn () => $this->cases->assign($case, null)
+                    : (($user = User::query()->whereKey((int) $value)->first()) !== null
+                        ? fn () => $this->cases->assign($case, $user)
+                        : throw ValidationException::withMessages(["actions.{$i}.value" => 'Choose who it is with.'])),
+                'claim' => fn () => $this->cases->assign($case, $request->user()),
+            };
+        }
+
+        DB::transaction(function () use ($changes, $case, $comment, $data, $request, $replyTo) {
+            foreach ($changes as $change) {
+                $change();
+                $case->refresh();
+            }
+
+            if ($comment !== '') {
+                $this->cases->comment($case, $comment, $data['visibility'], staff: $request->user(), replyTo: $replyTo);
+            }
+        });
+
+        return $this->show($case->refresh());
+    }
+
+    private function checkedComment(SafetyCase $case, string $body, string $visibility, ?int $replyToId, string $field): ?CaseComment
+    {
+        $replyTo = $replyToId !== null
+            ? $case->comments()->whereKey($replyToId)->first()
+            : null;
+
+        if ($replyToId !== null && $replyTo === null) {
+            throw ValidationException::withMessages([
+                'reply_to' => 'That message is not on this case.',
+            ]);
+        }
+
+        if ($visibility === CaseComment::VISIBILITY_PUBLIC) {
+            InlineImages::refuseIn($body, $field);
+
+            if ($replyTo !== null && ! $replyTo->isPublic()) {
+                throw ValidationException::withMessages([
+                    'reply_to' => 'A reply to the reporter cannot quote an internal note.',
+                ]);
+            }
+        }
+
+        return $replyTo;
     }
 }
