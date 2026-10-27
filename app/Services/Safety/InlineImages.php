@@ -9,6 +9,7 @@ use App\Models\Investigation;
 use App\Models\SafetyCase;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -90,6 +91,32 @@ final class InlineImages
                 $field => 'Pictures are for internal use only. Remove them before sending this outside the portal.',
             ]);
         }
+    }
+
+    public static function strip(string $text, string $where): string
+    {
+        if (! self::mentions($text)) {
+            return $text;
+        }
+
+        Log::warning('A picture was taken out of text leaving the portal; the form that sent it should refuse pictures.', [
+            'where' => $where,
+        ]);
+
+        return trim((string) preg_replace(self::TOKEN, '', $text));
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $payload
+     * @return array<array-key, mixed>
+     */
+    public static function stripAll(array $payload, string $where): array
+    {
+        return array_map(fn ($value) => match (true) {
+            is_string($value) => self::strip($value, $where),
+            is_array($value) => self::stripAll($value, $where),
+            default => $value,
+        }, $payload);
     }
 
     public function maxBytes(): int

@@ -154,6 +154,10 @@ final class CaseService
             default => CaseComment::AUTHOR_SYSTEM,
         };
 
+        if ($visibility === CaseComment::VISIBILITY_PUBLIC) {
+            $body = InlineImages::strip($body, 'public comment on '.$case->reference);
+        }
+
         $comment = CaseComment::create([
             'case_id' => $case->id,
             'reply_to_id' => $replyTo?->id,

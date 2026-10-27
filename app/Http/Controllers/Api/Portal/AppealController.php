@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\SafetyCase;
 use App\Models\Sanction;
 use App\Services\Safety\AppealService;
+use App\Services\Safety\InlineImages;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -51,6 +52,8 @@ class AppealController extends Controller
             'note' => ['required', 'string', 'min:1', 'max:20000'],
             'lift' => ['nullable', 'boolean'],
         ]);
+
+        InlineImages::refuseIn($data['note'], 'note');
 
         try {
             $decision = $this->appeals->decide(

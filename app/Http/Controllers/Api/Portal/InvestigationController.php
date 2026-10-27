@@ -14,6 +14,7 @@ use App\Models\Sanction;
 use App\Models\Subject;
 use App\Models\User;
 use App\Services\Safety\BulkActions;
+use App\Services\Safety\InlineImages;
 use App\Services\Safety\InvestigationPages;
 use App\Services\Safety\InvestigationService;
 use App\Services\Safety\Pages;
@@ -528,6 +529,8 @@ class InvestigationController extends Controller
                 'message' => 'Suspending accounts needs the admin flag.',
             ], 403);
         }
+
+        InlineImages::refuseIn($data['reason'], 'reason');
 
         try {
             $outcome = $this->bulk->run($investigation, $request->user(), $data);

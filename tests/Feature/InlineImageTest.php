@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\CaseComment;
 use App\Models\InlineImage;
 use App\Models\Investigation;
+use App\Models\OutboundEvent;
 use App\Models\SafetyCase;
+use App\Models\Sanction;
 use App\Models\Subject;
 use App\Models\User;
+use App\Services\Safety\CaseService;
 use App\Services\Safety\InvestigationService;
+use App\Services\Safety\SanctionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -182,5 +187,89 @@ class InlineImageTest extends TestCase
             ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('reason');
+    }
+
+    private const TOKEN = '![shot.png](image:0b4d8a5e-8f1c-4a52-9a7c-6c2f4f0f0f0f)';
+
+    #[Test]
+    public function an_appeal_decision_cannot_tell_the_reporter_about_a_picture(): void
+    {
+        $case = $this->report();
+
+        $this->actingAs($this->staff())
+            ->postJson("/api/portal/cases/{$case->id}/appeal/decision", [
+                'outcome' => SafetyCase::APPEAL_DECLINED,
+                'note' => 'See '.self::TOKEN,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('note');
+
+        $this->assertSame(0, $case->comments()->where('visibility', CaseComment::VISIBILITY_PUBLIC)->count());
+    }
+
+    #[Test]
+    public function a_data_request_answer_cannot_carry_a_picture(): void
+    {
+        $case = $this->report();
+        $this->actingAs($this->staff());
+
+        $this->postJson("/api/portal/cases/{$case->id}/data-request/approve", ['note' => self::TOKEN])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('note');
+
+        $this->postJson("/api/portal/cases/{$case->id}/data-request/decline", ['reason' => self::TOKEN])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('reason');
+
+        $this->assertSame(0, $case->comments()->where('visibility', CaseComment::VISIBILITY_PUBLIC)->count());
+    }
+
+    #[Test]
+    public function the_reason_for_acting_on_several_accounts_cannot_carry_a_picture(): void
+    {
+        $file = $this->file();
+        $subject = Subject::forUsername('Quiet Marlin', 44);
+
+        $this->actingAs($this->staff())
+            ->postJson("/api/portal/investigations/{$file->id}/bulk-actions", [
+                'kind' => 'action',
+                'subject_ids' => [$subject->id],
+                'type' => Sanction::TYPE_WARNING,
+                'reason' => 'Sockpuppetry '.self::TOKEN,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('reason');
+
+        $this->assertSame(0, Sanction::query()->count());
+    }
+
+    #[Test]
+    public function a_picture_that_gets_past_a_form_is_still_kept_off_the_wiki_and_out_of_emails(): void
+    {
+        $case = $this->report();
+        $case->forceFill(['wiki' => 'oasiswiki'])->save();
+        $file = $this->file();
+
+        $comment = app(CaseService::class)->comment(
+            $case,
+            'Here you go '.self::TOKEN,
+            CaseComment::VISIBILITY_PUBLIC,
+            $this->staff(),
+        );
+        $this->assertSame('Here you go', $comment->body);
+
+        $internal = app(CaseService::class)->comment($case, 'Ours '.self::TOKEN, CaseComment::VISIBILITY_INTERNAL, $this->staff());
+        $this->assertStringContainsString('image:', $internal->body, 'internal notes keep their pictures');
+
+        app(SanctionService::class)->issue(
+            Subject::forUsername('Quiet Marlin', 44),
+            ['type' => Sanction::TYPE_WARNING, 'reason' => 'Please stop. '.self::TOKEN],
+            $this->staff(),
+            $file,
+        );
+
+        $outbound = OutboundEvent::query()->pluck('payload')->map(fn ($p) => json_encode($p))->implode("\n");
+        $this->assertStringNotContainsString('image:', $outbound);
+        $this->assertStringContainsString('Please stop.', $outbound);
     }
 }

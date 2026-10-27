@@ -175,6 +175,11 @@ final class WikiSync
      */
     private function queue(array $attributes): OutboundEvent
     {
+        $attributes['payload'] = InlineImages::stripAll(
+            (array) ($attributes['payload'] ?? []),
+            (string) ($attributes['event'] ?? 'wiki event'),
+        );
+
         $event = OutboundEvent::create($attributes);
 
         SyncToWiki::dispatch()->afterCommit();
