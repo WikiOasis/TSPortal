@@ -10,6 +10,7 @@ use App\Models\SafetyCase;
 use App\Models\Sanction;
 use App\Models\Subject;
 use App\Models\User;
+use App\Services\Safety\InlineImages;
 use App\Services\Safety\SanctionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -105,6 +106,8 @@ class SanctionController extends Controller
             'case_reference' => ['nullable', 'string', 'max:32'],
             'investigation_reference' => ['required', 'string', 'max:32'],
         ]);
+
+        InlineImages::refuseIn($data['reason'], 'reason');
 
         if ($data['type'] === Sanction::TYPE_PAGE_DELETION) {
             return response()->json([

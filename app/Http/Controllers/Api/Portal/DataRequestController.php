@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api\Portal;
 use App\Http\Controllers\Controller;
 use App\Models\SafetyCase;
 use App\Services\Safety\DataRequestService;
+use App\Services\Safety\InlineImages;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -36,6 +37,8 @@ class DataRequestController extends Controller
             'note' => ['required', 'string', 'min:1', 'max:20000'],
             'start' => ['nullable', 'boolean'],
         ]);
+
+        InlineImages::refuseIn($data['note'], 'note');
 
         try {
             $outcome = $this->requests->approve(
@@ -70,6 +73,8 @@ class DataRequestController extends Controller
         $data = $request->validate([
             'reason' => ['required', 'string', 'min:1', 'max:20000'],
         ]);
+
+        InlineImages::refuseIn($data['reason'], 'reason');
 
         try {
             $this->requests->decline($case, $request->user(), $data['reason']);

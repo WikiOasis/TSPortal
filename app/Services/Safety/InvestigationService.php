@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace App\Services\Safety;
 
-use App\Models\CaseComment;
 use App\Models\Investigation;
 use App\Models\InvestigationNote;
 use App\Models\SafetyCase;
 use App\Models\Subject;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -293,12 +293,18 @@ final class InvestigationService
         Audit::log('investigation.subject-removed', $investigation, ['subject' => $subject->username]);
     }
 
-    public function note(Investigation $investigation, string $body, string $kind, User $author): InvestigationNote
-    {
+    public function note(
+        Investigation $investigation,
+        string $body,
+        string $kind,
+        User $author,
+        ?InvestigationNote $replyTo = null,
+    ): InvestigationNote {
         $kind = in_array($kind, InvestigationNote::KINDS, true) ? $kind : InvestigationNote::KIND_NOTE;
 
         $note = InvestigationNote::create([
             'investigation_id' => $investigation->id,
+            'reply_to_id' => $replyTo?->id,
             'author_id' => $author->id,
             'kind' => $kind,
             'body' => $body,
@@ -309,6 +315,45 @@ final class InvestigationService
         Audit::log('investigation.note', $investigation, ['kind' => $kind, 'note_id' => $note->id]);
 
         return $note;
+    }
+
+    public function setPriority(Investigation $investigation, string $priority): Investigation
+    {
+        if (! in_array($priority, Investigation::PRIORITIES, true)) {
+            throw new \InvalidArgumentException("Unknown investigation priority '{$priority}'.");
+        }
+
+        $from = $investigation->priority;
+        if ($from === $priority) {
+            return $investigation;
+        }
+
+        $investigation->priority = $priority;
+        $investigation->save();
+
+        Audit::log('investigation.priority', $investigation, ['from' => $from, 'to' => $priority]);
+
+        return $investigation;
+    }
+
+    public function setReviewDate(Investigation $investigation, ?string $date): Investigation
+    {
+        $to = $date !== null && $date !== '' ? Carbon::parse($date)->startOfDay() : null;
+        $from = $investigation->review_at;
+
+        if ($from?->toDateString() === $to?->toDateString()) {
+            return $investigation;
+        }
+
+        $investigation->review_at = $to;
+        $investigation->save();
+
+        Audit::log('investigation.review', $investigation, [
+            'from' => $from?->toDateString(),
+            'to' => $to?->toDateString(),
+        ]);
+
+        return $investigation;
     }
 
     public function assign(Investigation $investigation, ?User $assignee): Investigation
@@ -348,7 +393,7 @@ final class InvestigationService
     }
 
     /**
-     * @param  array{outcome?: ?string, findings?: ?string, disclosable?: bool, message?: ?string}  $input
+     * @param  array{outcome?: ?string, findings?: ?string}  $input
      */
     public function conclude(Investigation $investigation, User $actor, array $input): Investigation
     {
@@ -368,7 +413,6 @@ final class InvestigationService
                 'status' => Investigation::STATUS_CONCLUDED,
                 'outcome' => $outcome,
                 'findings' => $input['findings'] ?? $investigation->findings,
-                'outcome_disclosable' => (bool) ($input['disclosable'] ?? false),
                 'closed_by' => $actor->id,
                 'closed_at' => now(),
                 'review_at' => null,
@@ -381,15 +425,10 @@ final class InvestigationService
         ]);
 
         $status = $acted ? SafetyCase::STATUS_ACTION_TAKEN : SafetyCase::STATUS_REJECTED;
-        $message = trim((string) ($input['message'] ?? ''));
 
         foreach ($investigation->cases()->get() as $case) {
             if (! $case->isOpen()) {
                 continue;
-            }
-
-            if ($message !== '' && $investigation->outcome_disclosable && ! $case->anonymous) {
-                $this->cases->comment($case, $message, CaseComment::VISIBILITY_PUBLIC, $actor);
             }
 
             $this->cases->setStatus($case, $status, $actor, $this->resolutionFor($outcome));

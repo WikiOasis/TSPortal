@@ -145,6 +145,7 @@ final class Timeline
             'at' => $investigation->opened_at?->toIso8601String(),
             'kind' => 'opened',
             'actor' => $investigation->opener?->username,
+            'actor_id' => $investigation->opened_by,
             'title' => 'Investigation opened',
             'body' => $investigation->premise,
             'visibility' => 'internal',
@@ -157,9 +158,12 @@ final class Timeline
                 'kind' => 'note',
                 'subkind' => $note->kind,
                 'actor' => $note->author?->username,
+                'actor_id' => $note->author_id,
                 'title' => $this->noteTitle($note),
                 'body' => $note->body,
                 'visibility' => 'internal',
+                'note_id' => $note->id,
+                'reply_to' => $note->reply_to_id,
                 'meta' => [],
             ]);
         }
@@ -192,6 +196,7 @@ final class Timeline
                 'at' => $investigation->closed_at->toIso8601String(),
                 'kind' => 'concluded',
                 'actor' => $investigation->closer?->username,
+                'actor_id' => $investigation->closed_by,
                 'title' => $investigation->status === Investigation::STATUS_CONCLUDED
                     ? sprintf('Concluded — %s', str_replace('-', ' ', (string) $investigation->outcome))
                     : 'Closed without a finding',
@@ -213,6 +218,20 @@ final class Timeline
     {
         $system = $comment->author_type === CaseComment::AUTHOR_SYSTEM;
 
+        if ($comment->kind === CaseComment::KIND_STATUS) {
+            return [
+                'at' => $comment->created_at?->toIso8601String(),
+                'kind' => 'status-note',
+                'subkind' => $comment->author_type,
+                'actor' => $comment->author?->username ?? $comment->author_label,
+                'actor_id' => $comment->author_user_id,
+                'title' => $comment->isPublic() ? 'Told the reporter' : 'Recorded',
+                'body' => $comment->body,
+                'visibility' => $comment->visibility,
+                'meta' => ['synced' => $comment->synced_at !== null],
+            ];
+        }
+
         return [
             'at' => $comment->created_at?->toIso8601String(),
             'kind' => $system ? 'system' : 'comment',
@@ -225,6 +244,9 @@ final class Timeline
             },
             'body' => $comment->body,
             'visibility' => $comment->visibility,
+            'comment_id' => $comment->id,
+            'actor_id' => $comment->author_user_id,
+            'reply_to' => $comment->reply_to_id,
             'meta' => ['synced' => $comment->synced_at !== null],
         ];
     }
@@ -238,6 +260,7 @@ final class Timeline
             'at' => $sanction->issued_at?->toIso8601String(),
             'kind' => 'action',
             'actor' => $sanction->issuer?->username,
+            'actor_id' => $sanction->issued_by,
             'title' => sprintf('%s — %s', $sanction->label, $sanction->reference),
             'body' => $sanction->reason,
             'visibility' => 'public',
@@ -315,6 +338,7 @@ final class Timeline
                 'kind' => 'audit',
                 'subkind' => $log->action,
                 'actor' => $log->user?->username ?? $log->actor_label ?? 'the portal',
+                'actor_id' => $log->user_id,
                 'title' => self::titleFor($log),
                 'body' => null,
                 'visibility' => 'internal',
@@ -364,6 +388,10 @@ final class Timeline
                 $meta['from'] ?? '?',
                 $meta['to'] ?? '?',
             ),
+            'investigation.priority' => sprintf('Priority set to %s', $meta['to'] ?? '?'),
+            'investigation.review' => isset($meta['to']) && $meta['to'] !== null
+                ? sprintf('To be looked at again on %s', $meta['to'])
+                : 'No longer due a second look',
             'investigation.assigned' => isset($meta['assignee']) && $meta['assignee'] !== null
                 ? sprintf('Assigned to %s', $meta['assignee'])
                 : 'Unassigned',
@@ -432,9 +460,15 @@ final class Timeline
      */
     private function order(Collection $entries): array
     {
+        $rank = fn (array $e) => match ($e['kind']) {
+            'filed', 'opened' => -1,
+            'comment', 'note' => 1,
+            default => 0,
+        };
+
         return $entries
             ->values()
-            ->sortBy(fn (array $e) => $e['at'] ?? '9999')
+            ->sort(fn (array $a, array $b) => [$a['at'] ?? '9999', $rank($a)] <=> [$b['at'] ?? '9999', $rank($b)])
             ->values()
             ->map(fn (array $e) => $e + ['subkind' => null, 'link' => null, 'body' => null, 'meta' => []])
             ->all();

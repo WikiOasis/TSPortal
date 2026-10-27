@@ -43,6 +43,35 @@ async function request( method, path, body, options = {} ) {
 	return payload;
 }
 
+async function upload( path, file ) {
+	const form = new FormData();
+	form.append( 'file', file );
+
+	const response = await fetch( `/api${ path }`, {
+		method: 'POST',
+		credentials: 'same-origin',
+		headers: {
+			Accept: 'application/json',
+			'X-Requested-With': 'XMLHttpRequest',
+			'X-CSRF-TOKEN': csrf()
+		},
+		body: form
+	} );
+
+	let payload = null;
+	try {
+		payload = await response.json();
+	} catch ( e ) {
+		payload = null;
+	}
+
+	if ( !response.ok ) {
+		throw new ApiError( response.status, payload?.errors?.file ? { ...payload, message: payload.errors.file[ 0 ] } : payload );
+	}
+
+	return payload;
+}
+
 export function query( params ) {
 	const usable = Object.entries( params ?? {} )
 		.filter( ( [ , v ] ) => v !== null && v !== undefined && v !== '' && v !== false );
@@ -63,7 +92,9 @@ export const api = {
 	case: ( id ) => request( 'GET', `/portal/cases/${ id }` ),
 	updateCase: ( id, body ) => request( 'PATCH', `/portal/cases/${ id }`, body ),
 	claimCase: ( id ) => request( 'POST', `/portal/cases/${ id }/claim`, {} ),
+	caseTransaction: ( id, body ) => request( 'POST', `/portal/cases/${ id }/transactions`, body ),
 	commentOnCase: ( id, body ) => request( 'POST', `/portal/cases/${ id }/comments`, body ),
+	uploadCaseImage: ( id, file ) => upload( `/portal/cases/${ id }/images`, file ),
 	caseTimeline: ( id ) => request( 'GET', `/portal/cases/${ id }/timeline` ),
 
 	duplicateCandidates: ( id ) => request( 'GET', `/portal/cases/${ id }/duplicates/candidates` ),
@@ -83,6 +114,8 @@ export const api = {
 	openInvestigationsFromCases: ( body ) => request( 'POST', '/portal/investigations/from-cases', body ),
 	updateInvestigation: ( id, body ) => request( 'PATCH', `/portal/investigations/${ id }`, body ),
 	investigationTimeline: ( id ) => request( 'GET', `/portal/investigations/${ id }/timeline` ),
+	uploadInvestigationImage: ( id, file ) => upload( `/portal/investigations/${ id }/images`, file ),
+	investigationTransaction: ( id, body ) => request( 'POST', `/portal/investigations/${ id }/transactions`, body ),
 	addInvestigationNote: ( id, body ) => request( 'POST', `/portal/investigations/${ id }/notes`, body ),
 	addInvestigationSubject: ( id, body ) => request( 'POST', `/portal/investigations/${ id }/subjects`, body ),
 	addInvestigationSubjects: ( id, body ) => request( 'POST', `/portal/investigations/${ id }/subjects/bulk`, body ),

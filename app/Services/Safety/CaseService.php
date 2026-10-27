@@ -145,6 +145,8 @@ final class CaseService
         string $visibility = CaseComment::VISIBILITY_INTERNAL,
         ?User $staff = null,
         ?Subject $subject = null,
+        ?CaseComment $replyTo = null,
+        ?string $kind = null,
     ): CaseComment {
         $authorType = match (true) {
             $staff !== null => CaseComment::AUTHOR_STAFF,
@@ -152,14 +154,20 @@ final class CaseService
             default => CaseComment::AUTHOR_SYSTEM,
         };
 
+        if ($visibility === CaseComment::VISIBILITY_PUBLIC) {
+            $body = InlineImages::strip($body, 'public comment on '.$case->reference);
+        }
+
         $comment = CaseComment::create([
             'case_id' => $case->id,
+            'reply_to_id' => $replyTo?->id,
             'author_type' => $authorType,
             'author_user_id' => $staff?->id,
             'author_subject_id' => $subject?->id,
             'author_label' => $staff?->publicLabel() ?? $subject?->username,
             'body' => $body,
             'visibility' => $visibility,
+            'kind' => $kind,
         ]);
 
         if ($authorType === CaseComment::AUTHOR_SUBJECT && $case->status === SafetyCase::STATUS_CLOSED) {
@@ -225,6 +233,7 @@ final class CaseService
             $this->statusSentence($case, $from, $to, $staff),
             $case->anonymous ? CaseComment::VISIBILITY_INTERNAL : CaseComment::VISIBILITY_PUBLIC,
             $staff,
+            kind: CaseComment::KIND_STATUS,
         );
     }
 

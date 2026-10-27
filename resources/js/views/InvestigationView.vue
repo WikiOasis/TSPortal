@@ -47,7 +47,7 @@
 					<section class="ts-section">
 						<h2 class="ts-section__title">Why this was opened</h2>
 						<div class="ts-panel">
-							<p v-if="item.premise" class="ts-prose">{{ item.premise }}</p>
+							<RichText v-if="item.premise" class="ts-prose" :text="item.premise" />
 							<p v-else class="ts-meta">No premise was written down.</p>
 						</div>
 					</section>
@@ -57,47 +57,29 @@
 						<div class="ts-panel">
 							<div class="ts-inline">
 								<StatusChip v-if="item.outcome" kind="outcome" :value="item.outcome" />
-								<cdx-info-chip :status="item.outcome_disclosable ? 'notice' : 'warning'">
-									{{ item.outcome_disclosable ? 'May be told to reporters' : 'Not to be disclosed' }}
-								</cdx-info-chip>
 							</div>
-							<p class="ts-prose">{{ item.findings }}</p>
+							<RichText class="ts-prose" :text="item.findings" />
 						</div>
 					</section>
 
 					<section class="ts-section">
-						<CaseTimeline
+						<ActivityFeed
+							kind="investigation"
 							:entries="timeline"
 							:loading="timelineLoading"
-							heading="The file, in order"
-							:show-reporter-view="false"
+							:item="item"
+							@changed="onTransacted"
 						/>
 					</section>
 
 					<section class="ts-section">
-						<h2 class="ts-section__title">Add to the file</h2>
-						<div class="ts-panel ts-stack">
-							<cdx-field>
-								<template #label>What happened, or what you decided</template>
-								<cdx-text-area
-									v-model="note.body"
-									rows="4"
-									placeholder="What you found, who you spoke to, what you decided and why."
-								/>
-							</cdx-field>
-
-							<div class="ts-inline">
-								<cdx-select v-model:selected="note.kind" :menu-items="noteKinds" />
-								<cdx-button
-									action="progressive"
-									weight="primary"
-									:disabled="!note.body.trim() || savingNote"
-									@click="addNote"
-								>
-									Save to the file
-								</cdx-button>
-							</div>
-						</div>
+						<ActivityComposer
+							:key="item.id"
+							kind="investigation"
+							:item="item"
+							:team="team"
+							@done="onTransacted"
+						/>
 					</section>
 
 					<section class="ts-section">
@@ -355,48 +337,17 @@
 				<aside class="ts-stack">
 					<div class="ts-panel ts-stack">
 						<h2 class="ts-section__title">Handling</h2>
-
-						<cdx-field>
-							<template #label>State</template>
-							<cdx-select
-								v-model:selected="statusDraft"
-								:menu-items="liveStatusOptions"
-								:disabled="!item.live"
-								@update:selected="changeStatus"
-							/>
-						</cdx-field>
-
-						<cdx-field>
-							<template #label>With</template>
-							<cdx-select
-								v-model:selected="assigneeDraft"
-								:menu-items="assigneeOptions"
-								@update:selected="changeAssignee"
-							/>
-						</cdx-field>
-
-						<cdx-field>
-							<template #label>Priority</template>
-							<cdx-select
-								v-model:selected="priorityDraft"
-								:menu-items="priorityOptions"
-								@update:selected="changePriority"
-							/>
-						</cdx-field>
-
-						<cdx-field>
-							<template #label>Look again on</template>
-							<template #description>
-								The only thing that brings a quiet file back.
-							</template>
-							<cdx-text-input
-								v-model="reviewDraft"
-								input-type="date"
-								@change="changeReview"
-							/>
-						</cdx-field>
+						<p class="ts-meta">Change these with <strong>Add action</strong> under the file.</p>
 
 						<dl class="ts-dl">
+							<dt>State</dt>
+							<dd><StatusChip kind="investigation" :value="item.status" /></dd>
+							<dt>With</dt>
+							<dd>{{ item.assignee ? item.assignee.username : 'Nobody' }}</dd>
+							<dt>Priority</dt>
+							<dd><StatusChip kind="priority" :value="item.priority" /></dd>
+							<dt>Look again on</dt>
+							<dd>{{ item.review_at ? dateTime( item.review_at ).replace( /,? \d{1,2}:\d{2}.*$/, '' ) : 'Not set' }}</dd>
 							<dt>Opened</dt>
 							<dd>{{ dateTime( item.opened ) }}<template v-if="item.opened_by"> by {{ item.opened_by }}</template></dd>
 							<dt>Last change</dt>
@@ -503,47 +454,20 @@
 					<cdx-message type="warning" :allow-user-dismiss="false">
 						<template v-if="openCases.length">
 							This will close {{ openCases.length }} open report{{ openCases.length === 1 ? '' : 's' }}
-							({{ openCases.map( ( c ) => c.reference ).join( ', ' ) }}) and tell whoever filed
-							{{ openCases.length === 1 ? 'it' : 'them' }}.
-						</template>
-						<template v-else>
-							There are no open reports on this file, so nobody outside the portal is told
-							anything.
+							({{ openCases.map( ( c ) => c.reference ).join( ', ' ) }}).
 						</template>
 					</cdx-message>
 
 					<cdx-field>
 						<template #label>What was the outcome</template>
-						<template #description>
-							Decides how the reports close: acting closes them as “action taken”, not
-							acting as “closed, no action”.
-						</template>
 						<cdx-select v-model:selected="conclusion.outcome" :menu-items="outcomeOptions" />
 					</cdx-field>
 
 					<cdx-field>
 						<template #label>Findings</template>
-						<template #description>Case notes. Never leaves the portal, whatever else is set here.</template>
-						<cdx-text-area v-model="conclusion.findings" rows="4" />
+						<MarkdownEditor v-model="conclusion.findings" :upload="uploadImage" :rows="4" label="Findings" />
 					</cdx-field>
 
-					<cdx-checkbox v-model="conclusion.disclosable">
-						The outcome may be told to the people who filed the reports
-					</cdx-checkbox>
-
-					<cdx-field :disabled="!conclusion.disclosable">
-						<template #label>What to say to them</template>
-						<template #description>
-							Written for a reader, and sent as a public reply on every report on this
-							file. Nothing is sent unless the box above is ticked.
-						</template>
-						<cdx-text-area
-							v-model="conclusion.message"
-							rows="3"
-							:disabled="!conclusion.disclosable"
-							placeholder="We have looked into this and taken action. Thank you for reporting it."
-						/>
-					</cdx-field>
 				</div>
 			</cdx-dialog>
 		</template>
@@ -563,16 +487,19 @@ import {
 import PageHeader from '../components/PageHeader.vue';
 import LoadError from '../components/LoadError.vue';
 import StatusChip from '../components/StatusChip.vue';
-import CaseTimeline from '../components/CaseTimeline.vue';
+import ActivityFeed from '../components/ActivityFeed.vue';
+import ActivityComposer from '../components/ActivityComposer.vue';
 import IssueActionDialog from '../components/IssueActionDialog.vue';
 import BulkActionDialog from '../components/BulkActionDialog.vue';
 import AddSubjectsDialog from '../components/AddSubjectsDialog.vue';
 import DeletePagesDialog from '../components/DeletePagesDialog.vue';
 import AddPagesDialog from '../components/AddPagesDialog.vue';
+import MarkdownEditor from '../components/MarkdownEditor.vue';
+import RichText from '../components/RichText.vue';
 import { api } from '../lib/api.js';
 import { remember } from '../lib/recents.js';
 import {
-	ago, dateTime, NOTE_KINDS, OUTCOMES, PRIORITIES, SUBJECT_ROLES
+	ago, dateTime, OUTCOMES, SUBJECT_ROLES
 } from '../lib/format.js';
 
 const props = defineProps( { id: { type: [ String, Number ], required: true } } );
@@ -586,13 +513,7 @@ const timelineLoading = ref( false );
 const loading = ref( false );
 const error = ref( null );
 
-const statusDraft = ref( null );
-const assigneeDraft = ref( null );
-const priorityDraft = ref( null );
-const reviewDraft = ref( '' );
-
-const note = reactive( { body: '', kind: 'note' } );
-const savingNote = ref( false );
+const uploadImage = ( file ) => api.uploadInvestigationImage( props.id, file );
 
 const newSubject = reactive( { username: '', role: 'subject' } );
 const addingSubject = ref( false );
@@ -612,27 +533,13 @@ const pagesSection = ref( null );
 const showConclude = ref( false );
 const conclusion = reactive( {
 	outcome: null,
-	findings: '',
-	disclosable: false,
-	message: ''
+	findings: ''
 } );
 
-const noteKinds = NOTE_KINDS;
 const roleOptions = SUBJECT_ROLES;
-const priorityOptions = PRIORITIES;
 const outcomeOptions = OUTCOMES;
 
-const liveStatusOptions = [
-	{ value: 'open', label: 'Open' },
-	{ value: 'monitoring', label: 'Monitoring' }
-];
-
 const team = ref( [] );
-
-const assigneeOptions = computed( () => [
-	{ value: null, label: 'Nobody' },
-	...team.value.map( ( u ) => ( { value: u.id, label: u.username } ) )
-] );
 
 const openCases = computed( () => (
 	( item.value?.cases ?? [] ).filter( ( c ) => [ 'received', 'in-review', 'investigating' ].includes( c.status ) )
@@ -747,10 +654,6 @@ function onSubjectsAdded( response ) {
 
 function adopt( data ) {
 	item.value = data;
-	statusDraft.value = data.live ? data.status : 'open';
-	assigneeDraft.value = data.assignee?.id ?? null;
-	priorityDraft.value = data.priority;
-	reviewDraft.value = data.review_at ? data.review_at.slice( 0, 10 ) : '';
 	conclusion.outcome ??= data.outcome ?? null;
 	conclusion.findings = conclusion.findings || data.findings || '';
 }
@@ -804,39 +707,9 @@ async function loadTeam() {
 	}
 }
 
-function revert() {
-	adopt( item.value );
-}
-
-async function patch( body, said ) {
-	try {
-		const response = await api.updateInvestigation( props.id, body );
-		adopt( response.data );
-		loadTimeline();
-		notify( said );
-	} catch ( e ) {
-		revert();
-		notify( e.message, 'error' );
-	}
-}
-
-const changeStatus = ( value ) => patch( { status: value }, 'State changed.' );
-const changePriority = ( value ) => patch( { priority: value }, 'Priority changed.' );
-const changeAssignee = ( value ) => patch( { assigned_to: value }, 'Reassigned.' );
-const changeReview = () => patch( { review_at: reviewDraft.value || null }, 'Review date set.' );
-
-async function addNote() {
-	savingNote.value = true;
-	try {
-		await api.addInvestigationNote( props.id, { body: note.body, kind: note.kind } );
-		note.body = '';
-		await load();
-		notify( 'Saved to the file.' );
-	} catch ( e ) {
-		notify( e.message, 'error' );
-	} finally {
-		savingNote.value = false;
-	}
+function onTransacted( data ) {
+	adopt( data );
+	loadTimeline();
 }
 
 async function addSubject() {
@@ -905,9 +778,7 @@ async function conclude() {
 	try {
 		const response = await api.concludeInvestigation( props.id, {
 			outcome: conclusion.outcome,
-			findings: conclusion.findings || null,
-			disclosable: conclusion.disclosable,
-			message: conclusion.message || null
+			findings: conclusion.findings || null
 		} );
 		adopt( response.data );
 		showConclude.value = false;

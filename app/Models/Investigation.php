@@ -32,6 +32,8 @@ class Investigation extends Model
 
     public const LIVE_STATUSES = [self::STATUS_OPEN, self::STATUS_MONITORING];
 
+    public const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
+
     public const OUTCOME_NO_ACTION = 'no-action';
 
     public const OUTCOME_WARNED = 'warned';

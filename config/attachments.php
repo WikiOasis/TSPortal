@@ -7,6 +7,8 @@ return [
     'disk' => (string) env('TS_ATTACHMENTS_DISK', env('FILESYSTEM_DISK', 'local')),
     'prefix' => trim((string) env('TS_ATTACHMENTS_PREFIX', 'case-attachments'), '/'),
     'max_bytes' => (int) env('TS_ATTACHMENTS_MAX_BYTES', 25 * 1024 * 1024),
+    'inline_prefix' => trim((string) env('TS_INLINE_IMAGES_PREFIX', 'inline-images'), '/'),
+    'inline_max_bytes' => (int) env('TS_INLINE_IMAGES_MAX_BYTES', 10 * 1024 * 1024),
     'max_per_case' => (int) env('TS_ATTACHMENTS_MAX_PER_CASE', 20),
     'allowed_mime' => array_values(array_filter(array_map('trim', explode(',', (string) env(
         'TS_ATTACHMENTS_ALLOWED_MIME',

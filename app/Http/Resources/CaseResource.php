@@ -174,6 +174,7 @@ class CaseResource extends JsonResource
                 'author' => $c->author_label,
                 'body' => $c->body,
                 'visibility' => $c->visibility,
+                'reply_to' => $c->reply_to_id,
                 'date' => $c->created_at?->toIso8601String(),
                 'synced' => $c->synced_at !== null,
             ])->all()),
