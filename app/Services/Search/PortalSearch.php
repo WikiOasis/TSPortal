@@ -10,6 +10,7 @@ use App\Models\SafetyCase;
 use App\Models\Subject;
 use App\Models\TransparencyReport;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -30,6 +31,8 @@ final class PortalSearch
 
     private const HIGHLIGHT_CLOSE = "]\u{2063}";
 
+    private const URGENT = ['urgent', 'high'];
+
     public function __construct(
         private readonly OpenSearch $search,
         private readonly SearchDocuments $documents,
@@ -41,7 +44,7 @@ final class PortalSearch
     }
 
     /**
-     * @param  array{kinds?: list<string>, titles_only?: bool, mine?: bool, open_only?: bool, limit?: int}  $options
+     * @param  array{kinds?: list<string>, titles_only?: bool, mine?: bool, open_only?: bool, unassigned?: bool, urgent?: bool, since?: string|null, sort?: string, limit?: int}  $options
      * @return array{rows: list<array<string, mixed>>, engine: string, total: int, degraded: bool}
      */
     public function find(string $terms, array $options = [], ?User $viewer = null): array
@@ -49,6 +52,13 @@ final class PortalSearch
         $terms = trim($terms);
         $kinds = $this->kinds($options['kinds'] ?? []);
         $limit = max(1, min(50, (int) ($options['limit'] ?? 20)));
+
+        if (($options['unassigned'] ?? false) || ($options['urgent'] ?? false)) {
+            $kinds = array_values(array_intersect($kinds, [
+                SearchDocuments::KIND_CASE,
+                SearchDocuments::KIND_INVESTIGATION,
+            ])) ?: [SearchDocuments::KIND_CASE, SearchDocuments::KIND_INVESTIGATION];
+        }
 
         if ($terms === '') {
             return ['rows' => [], 'engine' => self::ENGINE_DATABASE, 'total' => 0, 'degraded' => false];
@@ -397,7 +407,9 @@ final class PortalSearch
                 ],
             ],
             '_source' => ['includes' => ['kind', 'id']],
-            'sort' => ['_score', ['updated_at' => 'desc']],
+            'sort' => ($options['sort'] ?? 'relevance') === 'newest'
+                ? [['updated_at' => 'desc'], '_score']
+                : ['_score', ['updated_at' => 'desc']],
         ];
 
         if (! $titlesOnly) {
@@ -486,6 +498,18 @@ final class PortalSearch
             $filters[] = ['term' => ['assignee_id' => $viewer->id]];
         }
 
+        if ($options['unassigned'] ?? false) {
+            $filters[] = ['bool' => ['must_not' => [['exists' => ['field' => 'assignee_id']]]]];
+        }
+
+        if ($options['urgent'] ?? false) {
+            $filters[] = ['terms' => ['priority' => self::URGENT]];
+        }
+
+        if (($since = $this->since($options['since'] ?? null)) !== null) {
+            $filters[] = ['range' => ['updated_at' => ['gte' => $since->toIso8601String()]]];
+        }
+
         if ($options['open_only'] ?? false) {
             $filters[] = ['bool' => [
                 'minimum_should_match' => 1,
@@ -497,6 +521,17 @@ final class PortalSearch
         }
 
         return $filters;
+    }
+
+    private function since(?string $since): ?CarbonImmutable
+    {
+        return match ($since) {
+            'day' => CarbonImmutable::now()->subDay(),
+            'week' => CarbonImmutable::now()->subWeek(),
+            'month' => CarbonImmutable::now()->subMonth(),
+            'year' => CarbonImmutable::now()->subYear(),
+            default => null,
+        };
     }
 
     private function openStatuses(): array
@@ -542,6 +577,18 @@ final class PortalSearch
                 $this->onlyOpen($kind, $query);
             }
 
+            if (($options['unassigned'] ?? false) && $this->hasAssignee($kind)) {
+                $query->whereNull($this->assigneeColumn($kind));
+            }
+
+            if ($options['urgent'] ?? false) {
+                $query->whereIn('priority', self::URGENT);
+            }
+
+            if (($since = $this->since($options['since'] ?? null)) !== null) {
+                $query->where('updated_at', '>=', $since);
+            }
+
             foreach ($query->orderByDesc('updated_at')->limit($perKind)->get() as $found) {
                 $row = $this->row($kind, $found);
 
@@ -552,7 +599,11 @@ final class PortalSearch
             }
         }
 
-        usort($rows, fn (array $a, array $b) => [$b['rank'], $b['row']['updated'] ?? ''] <=> [$a['rank'], $a['row']['updated'] ?? '']);
+        $newest = ($options['sort'] ?? 'relevance') === 'newest';
+
+        usort($rows, fn (array $a, array $b) => $newest
+            ? ($b['row']['updated'] ?? '') <=> ($a['row']['updated'] ?? '')
+            : [$b['rank'], $b['row']['updated'] ?? ''] <=> [$a['rank'], $a['row']['updated'] ?? '']);
 
         return [
             'rows' => array_map(fn (array $entry) => $entry['row'], array_slice($rows, 0, $limit)),

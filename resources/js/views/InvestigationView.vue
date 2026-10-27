@@ -451,8 +451,8 @@
 				@default="showConclude = false"
 			>
 				<div class="ts-stack">
-					<cdx-message type="warning" :allow-user-dismiss="false">
-						<template v-if="openCases.length">
+					<cdx-message v-if="openCases.length" type="notice" :allow-user-dismiss="false">
+						<template>
 							This will close {{ openCases.length }} open report{{ openCases.length === 1 ? '' : 's' }}
 							({{ openCases.map( ( c ) => c.reference ).join( ', ' ) }}).
 						</template>

@@ -29,6 +29,10 @@ class SearchController extends Controller
             'titles_only' => ['nullable', 'boolean'],
             'mine' => ['nullable', 'boolean'],
             'open_only' => ['nullable', 'boolean'],
+            'unassigned' => ['nullable', 'boolean'],
+            'urgent' => ['nullable', 'boolean'],
+            'since' => ['nullable', 'string', 'in:day,week,month,year'],
+            'sort' => ['nullable', 'string', 'in:relevance,newest'],
         ]);
 
         $found = $this->search->find(
@@ -39,6 +43,10 @@ class SearchController extends Controller
                 'titles_only' => (bool) ($data['titles_only'] ?? false),
                 'mine' => (bool) ($data['mine'] ?? false),
                 'open_only' => (bool) ($data['open_only'] ?? false),
+                'unassigned' => (bool) ($data['unassigned'] ?? false),
+                'urgent' => (bool) ($data['urgent'] ?? false),
+                'since' => $data['since'] ?? null,
+                'sort' => $data['sort'] ?? 'relevance',
             ],
             $this->viewer($request),
         );
