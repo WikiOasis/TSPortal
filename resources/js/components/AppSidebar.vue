@@ -96,7 +96,7 @@
 		</div>
 
 		<OpenInvestigationDialog v-model:open="showOpenFile" @opened="onOpened" />
-		<QuickSearch v-model:open="showSearch" />
+		<QuickSearch v-model:open="showSearch" @open-investigation="openFile" />
 	</div>
 </template>
 
@@ -104,13 +104,10 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { CdxButton, CdxIcon } from '@wikimedia/codex';
-import {
-	cdxIconAdd, cdxIconArticle, cdxIconBlock, cdxIconChart, cdxIconFlag, cdxIconHistory,
-	cdxIconMenu, cdxIconRobot, cdxIconSearch, cdxIconTrash, cdxIconUserAvatar, cdxIconUserGroup,
-	cdxIconViewDetails
-} from '@wikimedia/codex-icons';
+import { cdxIconAdd, cdxIconMenu, cdxIconSearch } from '@wikimedia/codex-icons';
 import OpenInvestigationDialog from './OpenInvestigationDialog.vue';
 import QuickSearch from './QuickSearch.vue';
+import { sections } from '../lib/navigation.js';
 import { session } from '../lib/session.js';
 
 const route = useRoute();
@@ -228,22 +225,7 @@ function openFile() {
 	showOpenFile.value = true;
 }
 
-const links = computed( () => [
-	{ name: 'dashboard', label: 'Dashboard', icon: cdxIconViewDetails, match: [ 'dashboard' ] },
-	{ name: 'queue', label: 'Queue', icon: cdxIconFlag, match: [ 'queue', 'case' ] },
-	{ name: 'automation', label: 'Automation', icon: cdxIconRobot, match: [ 'automation' ] },
-	{ name: 'investigations', label: 'Investigations', icon: cdxIconUserGroup, match: [ 'investigations', 'investigation' ] },
-	{ name: 'subjects', label: 'Accounts', icon: cdxIconUserAvatar, match: [ 'subjects', 'subject' ] },
-	{ name: 'sanctions', label: 'Actions', icon: cdxIconBlock, match: [ 'sanctions' ] },
-	{ name: 'data-removals', label: 'Erasures', icon: cdxIconTrash, match: [ 'data-removals' ] },
-	{ name: 'analytics', label: 'Activity', icon: cdxIconChart, match: [ 'analytics' ] },
-	{ name: 'checkuser', label: 'CheckUser log', icon: cdxIconSearch, match: [ 'checkuser' ] },
-	{ name: 'transparency', label: 'Transparency', icon: cdxIconArticle, match: [ 'transparency', 'transparency-report' ] },
-	{ name: 'audit', label: 'Audit log', icon: cdxIconHistory, match: [ 'audit' ] },
-	...( session.can( 'user-manager' )
-		? [ { name: 'staff', label: 'Team', icon: cdxIconUserGroup, match: [ 'staff' ] } ]
-		: [] )
-] );
+const links = computed( () => sections() );
 
 function isActive( link ) {
 	return link.match.includes( route.name );

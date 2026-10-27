@@ -7,6 +7,7 @@ namespace App\Services\Search;
 use App\Models\DataRemoval;
 use App\Models\Investigation;
 use App\Models\SafetyCase;
+use App\Models\Sanction;
 use App\Models\Subject;
 use App\Models\TransparencyReport;
 use App\Models\User;
@@ -57,7 +58,11 @@ final class PortalSearch
             $kinds = array_values(array_intersect($kinds, [
                 SearchDocuments::KIND_CASE,
                 SearchDocuments::KIND_INVESTIGATION,
-            ])) ?: [SearchDocuments::KIND_CASE, SearchDocuments::KIND_INVESTIGATION];
+            ]));
+        }
+
+        if ($kinds === []) {
+            return ['rows' => [], 'engine' => self::ENGINE_DATABASE, 'total' => 0, 'degraded' => false];
         }
 
         if ($terms === '') {
@@ -140,13 +145,13 @@ final class PortalSearch
         }
 
         if (! $this->fullTextAvailable()) {
-            return $this->nothingRelated($seed['about'], degraded: false);
+            return $this->relatedInDatabase($kind, $id, $seed, $limit, degraded: false);
         }
 
         $should = $this->likeSeed($seed);
 
         if ($should === []) {
-            return $this->nothingRelated($seed['about'], degraded: false);
+            return $this->relatedInDatabase($kind, $id, $seed, $limit, degraded: false);
         }
 
         $kinds = SearchDocuments::KINDS;
@@ -180,7 +185,7 @@ final class PortalSearch
         } catch (SearchUnavailable $e) {
             report($e);
 
-            return $this->nothingRelated($seed['about'], degraded: true);
+            return $this->relatedInDatabase($kind, $id, $seed, $limit, degraded: true);
         }
 
         $rows = array_map(
@@ -195,6 +200,102 @@ final class PortalSearch
             'seed' => $seed['about'],
             'engine' => self::ENGINE_OPENSEARCH,
             'degraded' => false,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $seed
+     * @return array{rows: list<array<string, mixed>>, seed: array<string, mixed>|null, engine: string, degraded: bool}
+     */
+    private function relatedInDatabase(string $kind, int $id, array $seed, int $limit, bool $degraded): array
+    {
+        if ($kind === self::SEED_TRANSPARENCY) {
+            return $this->nothingRelated($seed['about'], $degraded);
+        }
+
+        $subjectIds = Subject::query()
+            ->whereIn('username', $seed['accounts'])
+            ->pluck('id')
+            ->all();
+
+        $investigationId = match ($kind) {
+            SearchDocuments::KIND_INVESTIGATION => $id,
+            SearchDocuments::KIND_CASE => SafetyCase::query()->whereKey($id)->value('investigation_id'),
+            default => null,
+        };
+
+        $found = collect();
+
+        if ($subjectIds !== [] || $investigationId !== null) {
+            $found = $found->concat(
+                SafetyCase::query()
+                    ->with($this->eagerLoads(SearchDocuments::KIND_CASE))
+                    ->when($kind === SearchDocuments::KIND_CASE, fn (Builder $q) => $q->whereKeyNot($id))
+                    ->where(fn (Builder $q) => $q
+                        ->when($subjectIds !== [], fn (Builder $b) => $b->whereHas(
+                            'subjects',
+                            fn (Builder $s) => $s->whereKey($subjectIds),
+                        ))
+                        ->when($investigationId !== null, fn (Builder $b) => $b->orWhere('investigation_id', $investigationId)))
+                    ->orderByDesc('updated_at')
+                    ->limit($limit)
+                    ->get()
+                    ->map(fn (SafetyCase $c) => $this->row(SearchDocuments::KIND_CASE, $c, null)),
+            );
+        }
+
+        if ($subjectIds !== []) {
+            $found = $found->concat(
+                Investigation::query()
+                    ->with($this->eagerLoads(SearchDocuments::KIND_INVESTIGATION))
+                    ->when($kind === SearchDocuments::KIND_INVESTIGATION, fn (Builder $q) => $q->whereKeyNot($id))
+                    ->where(fn (Builder $q) => $q
+                        ->whereHas('subjects', fn (Builder $s) => $s->whereKey($subjectIds))
+                        ->when($kind === SearchDocuments::KIND_CASE && $investigationId !== null, fn (Builder $b) => $b->orWhereKey($investigationId)))
+                    ->orderByDesc('updated_at')
+                    ->limit($limit)
+                    ->get()
+                    ->map(fn (Investigation $i) => $this->row(SearchDocuments::KIND_INVESTIGATION, $i)),
+            );
+
+            $found = $found->concat(
+                Sanction::query()
+                    ->with($this->eagerLoads(SearchDocuments::KIND_SANCTION))
+                    ->when($kind === SearchDocuments::KIND_SANCTION, fn (Builder $q) => $q->whereKeyNot($id))
+                    ->whereIn('subject_id', $subjectIds)
+                    ->orderByDesc('updated_at')
+                    ->limit($limit)
+                    ->get()
+                    ->map(fn (Sanction $s) => $this->row(SearchDocuments::KIND_SANCTION, $s)),
+            );
+
+            if ($kind !== SearchDocuments::KIND_SUBJECT) {
+                $found = $found->concat(
+                    Subject::query()
+                        ->with($this->eagerLoads(SearchDocuments::KIND_SUBJECT))
+                        ->whereKey($subjectIds)
+                        ->limit($limit)
+                        ->get()
+                        ->map(fn (Subject $s) => $this->row(SearchDocuments::KIND_SUBJECT, $s)),
+                );
+            }
+        }
+
+        $rows = $found
+            ->map(fn (array $row) => array_merge($row, [
+                'related_by' => $this->sharedAccount($row, $seed['accounts'])
+                    ?? ($investigationId !== null && $row['kind'] === SearchDocuments::KIND_CASE ? 'Same investigation' : null),
+            ]))
+            ->sortByDesc(fn (array $row) => [$row['related_by'] !== null, $row['updated'] ?? ''])
+            ->take($limit)
+            ->values()
+            ->all();
+
+        return [
+            'rows' => $rows,
+            'seed' => $seed['about'],
+            'engine' => self::ENGINE_DATABASE,
+            'degraded' => $degraded,
         ];
     }
 
@@ -237,6 +338,7 @@ final class PortalSearch
             'about' => [
                 'kind' => $kind,
                 'kind_label' => SearchDocuments::label($kind),
+                'route' => SearchDocuments::route($kind),
                 'id' => $id,
                 'reference' => $document['reference'],
                 'title' => $document['title'],
@@ -268,6 +370,7 @@ final class PortalSearch
             'about' => [
                 'kind' => self::SEED_TRANSPARENCY,
                 'kind_label' => 'Transparency report',
+                'route' => 'transparency-report',
                 'id' => $id,
                 'reference' => $report->reference,
                 'title' => $report->title,
@@ -558,7 +661,7 @@ final class PortalSearch
         bool $degraded,
     ): array {
         $titlesOnly = (bool) ($options['titles_only'] ?? false);
-        $perKind = (int) max(3, ceil($limit / max(1, count($kinds))) + 2);
+        $perKind = $limit;
         $reference = strtoupper($terms).'%';
 
         $rows = [];

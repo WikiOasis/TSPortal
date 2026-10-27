@@ -4,12 +4,18 @@ declare(strict_types=1);
 
 namespace App\Services\Search;
 
+use App\Models\CaseComment;
+use App\Models\InvestigationNote;
 use App\Models\Subject;
 use Illuminate\Database\Eloquent\Model;
 
 final class SearchPreview
 {
     private const EXCERPT = 420;
+
+    private const SECTION = 1600;
+
+    private const MESSAGE = 360;
 
     public function of(string $kind, int $id): ?array
     {
@@ -39,6 +45,8 @@ final class SearchPreview
             'accounts' => [],
             'excerpt' => null,
             'excerpt_label' => null,
+            'sections' => [],
+            'thread' => [],
         ], $this->build($kind, $row));
     }
 
@@ -109,6 +117,29 @@ final class SearchPreview
 
             'excerpt' => $this->excerpt($case->summary ?: $comment?->body),
             'excerpt_label' => $case->summary ? 'What was reported' : ($comment ? 'Latest message' : null),
+
+            'sections' => $this->sections([
+                'What was reported' => $case->summary,
+                'Resolution' => $case->resolution,
+            ]),
+
+            'thread' => $case->comments()
+                ->with(['author', 'subjectAuthor'])
+                ->latest()
+                ->limit(8)
+                ->get()
+                ->reject(fn (CaseComment $c) => $c->kind === CaseComment::KIND_STATUS
+                    || $c->author_type === CaseComment::AUTHOR_SYSTEM)
+                ->take(3)
+                ->values()
+                ->map(fn (CaseComment $c) => [
+                    'id' => $c->id,
+                    'author' => $c->author?->username ?? $c->subjectAuthor?->username ?? $c->author_label ?? 'Someone',
+                    'when' => $c->created_at?->toIso8601String(),
+                    'internal' => ! $c->isPublic(),
+                    'body' => $this->excerpt($c->body, self::MESSAGE),
+                ])
+                ->all(),
         ];
     }
 
@@ -147,6 +178,26 @@ final class SearchPreview
 
             'excerpt' => $this->excerpt($investigation->premise ?: $note?->body),
             'excerpt_label' => $investigation->premise ? 'Premise' : ($note ? 'Latest note' : null),
+
+            'sections' => $this->sections([
+                'Premise' => $investigation->premise,
+                'Findings' => $investigation->findings,
+            ]),
+
+            'thread' => $investigation->notes()
+                ->reorder()
+                ->with('author')
+                ->latest()
+                ->limit(3)
+                ->get()
+                ->map(fn (InvestigationNote $n) => [
+                    'id' => $n->id,
+                    'author' => $n->author?->username ?? 'Someone',
+                    'when' => $n->created_at?->toIso8601String(),
+                    'internal' => true,
+                    'body' => $this->excerpt($n->body, self::MESSAGE),
+                ])
+                ->all(),
         ];
     }
 
@@ -173,6 +224,8 @@ final class SearchPreview
 
             'excerpt' => $this->excerpt($subject->notes),
             'excerpt_label' => $subject->notes ? 'Notes' : null,
+
+            'sections' => $this->sections(['Notes' => $subject->notes]),
         ];
     }
 
@@ -205,6 +258,11 @@ final class SearchPreview
 
             'excerpt' => $this->excerpt($sanction->reason),
             'excerpt_label' => $sanction->reason ? 'Reason given' : null,
+
+            'sections' => $this->sections([
+                'Reason given' => $sanction->reason,
+                'Internal reason' => $sanction->internal_reason,
+            ]),
         ];
     }
 
@@ -236,6 +294,11 @@ final class SearchPreview
 
             'excerpt' => $this->excerpt($removal->reason ?: $removal->refusal_reason),
             'excerpt_label' => $removal->reason ? 'Why' : ($removal->refusal_reason ? 'Why it was refused' : null),
+
+            'sections' => $this->sections([
+                'Why' => $removal->reason,
+                'Why it was refused' => $removal->refusal_reason,
+            ]),
         ];
     }
 
@@ -279,7 +342,26 @@ final class SearchPreview
         return $rows;
     }
 
-    private function excerpt(?string $text): ?string
+    /**
+     * @param  array<string, string|null>  $sections
+     * @return list<array{label: string, text: string}>
+     */
+    private function sections(array $sections): array
+    {
+        $rows = [];
+
+        foreach ($sections as $label => $text) {
+            $text = $this->excerpt($text, self::SECTION);
+
+            if ($text !== null) {
+                $rows[] = ['label' => $label, 'text' => $text];
+            }
+        }
+
+        return $rows;
+    }
+
+    private function excerpt(?string $text, int $length = self::EXCERPT): ?string
     {
         $text = trim((string) $text);
 
@@ -287,8 +369,8 @@ final class SearchPreview
             return null;
         }
 
-        return mb_strlen($text) > self::EXCERPT
-            ? rtrim(mb_substr($text, 0, self::EXCERPT)).'…'
+        return mb_strlen($text) > $length
+            ? rtrim(mb_substr($text, 0, $length)).'…'
             : $text;
     }
 }
