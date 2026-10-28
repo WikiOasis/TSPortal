@@ -37,6 +37,7 @@ class AutomatedReviewResource extends JsonResource
             'confirmed_by' => $this->whenLoaded('confirmer', fn () => $this->confirmer?->username),
             'confirmed_at' => $this->confirmed_at?->toIso8601String(),
             'confidence' => $this->confidence,
+            'headline' => $this->headline,
             'page_summary' => $this->page_summary,
             'change_summary' => $this->change_summary,
             'reason' => $this->reason,

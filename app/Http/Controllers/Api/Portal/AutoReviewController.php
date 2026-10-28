@@ -73,6 +73,7 @@ class AutoReviewController extends Controller
                 ->where('automated_reviews.page_title', 'like', $like)
                 ->orWhere('automated_reviews.author', 'like', $like)
                 ->orWhere('cases.reference', 'like', $like)
+                ->orWhere('automated_reviews.headline', 'like', $like)
                 ->orWhere('automated_reviews.reason', 'like', $like));
         }
 

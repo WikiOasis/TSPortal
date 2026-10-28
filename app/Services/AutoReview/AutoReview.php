@@ -225,6 +225,7 @@ final class AutoReview
             'state' => AutomatedReview::STATE_DONE,
             'bucket' => $verdict['bucket'],
             'confidence' => $verdict['confidence'],
+            'headline' => $verdict['headline'],
             'page_summary' => $verdict['page_summary'],
             'change_summary' => $verdict['change_summary'],
             'reason' => $verdict['reason'],

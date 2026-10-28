@@ -1,60 +1,87 @@
 <template>
 	<article class="ts-ar-detail">
 		<header v-if="showHeader" class="ts-ar-detail__head">
-			<h2 class="ts-ar-detail__title">
-				<a v-if="review.links.page" :href="review.links.page" target="_blank" rel="noopener noreferrer">
-					{{ review.page_title ?? row.subject }}
-				</a>
-				<span v-else>{{ review.page_title ?? row.subject }}</span>
-			</h2>
+			<div class="ts-ar-detail__heading">
+				<h2 class="ts-ar-detail__title">{{ headline || pageTitle }}</h2>
+				<slot name="nav" />
+			</div>
 			<div class="ts-meta">
+				<template v-if="headline">
+					<a v-if="review.links.page" :href="review.links.page" target="_blank" rel="noopener noreferrer">{{ pageTitle }}</a>
+					<strong v-else>{{ pageTitle }}</strong>
+					on
+				</template>
 				<span class="ts-mono">{{ review.wiki ?? row.wiki }}</span>
 				·
 				<router-link :to="{ name: 'case', params: { id: row.id } }" class="ts-mono">{{ row.reference }}</router-link>
 				· flagged {{ ago( row.filed ) }}
+				<template v-if="review.author">
+					· by
+					<a v-if="review.links.contributions" :href="review.links.contributions" target="_blank" rel="noopener noreferrer">{{ review.author }}</a>
+					<template v-else>{{ review.author }}</template>
+					<template v-if="author && author.ip"> (not signed in)</template>
+					<template v-else-if="author"> ({{ author.edits ?? '?' }} edits<template v-if="author.registered">, joined {{ date( author.registered ) }}</template><template v-if="author.groups && author.groups.length">, {{ author.groups.join( ', ' ) }}</template>)</template>
+				</template>
 				<template v-if="review.scan_mode === 'page'"> · whole page</template>
 				<template v-if="row.assignee"> · with <strong>{{ row.assignee.username }}</strong></template>
 			</div>
+			<div v-if="hasFacts" class="ts-inline ts-ar-detail__facts">
+				<cdx-info-chip v-if="review.facts.reverted" status="success">Already reverted</cdx-info-chip>
+				<cdx-info-chip v-if="review.facts.deleted" status="success">Page or revision deleted</cdx-info-chip>
+				<cdx-info-chip v-if="review.facts.hidden" status="success">Text hidden</cdx-info-chip>
+				<cdx-info-chip v-if="review.facts.current === true" status="warning">Still live</cdx-info-chip>
+				<cdx-info-chip v-else-if="review.facts.current === false && !review.facts.reverted">Edited since</cdx-info-chip>
+				<cdx-info-chip v-if="review.facts.created_page">Created the page</cdx-info-chip>
+				<cdx-info-chip v-if="author && author.blocked" status="warning">Editor is blocked</cdx-info-chip>
+			</div>
 		</header>
 
-		<cdx-message :type="messageType" :allow-user-dismiss="false" class="ts-ai-card">
-			<p class="ts-ai-card__verdict">
-				<strong>The AI's read: {{ current ? current.label.toLowerCase() : ( review.state === 'failed' ? 'it could not sort this one' : 'not sorted yet' ) }}</strong>
-				<span v-if="current && review.confidence !== null && !review.staff_bucket" class="ts-meta"> · {{ percent( review.confidence ) }} sure</span>
-			</p>
+		<p v-if="!showHeader && headline" class="ts-ar-detail__headline">{{ headline }}</p>
 
-			<p v-if="review.reason">{{ review.reason }}</p>
-			<p v-else-if="review.state === 'failed' && review.error" class="ts-meta">{{ review.error }}</p>
-			<p v-else-if="!current" class="ts-meta">Everything Jev sent is below.</p>
+		<details class="ts-reasoning" :open="open" @toggle="onToggle">
+			<summary class="ts-reasoning__summary">
+				<cdx-icon :icon="cdxIconRobot" size="small" />
+				<span class="ts-reasoning__title">AI reasoning</span>
+				<span class="ts-meta">
+					{{ current ? current.label : ( review.state === 'failed' ? 'could not sort this one' : 'not sorted yet' ) }}<template v-if="current && review.confidence !== null && !review.staff_bucket"> · {{ percent( review.confidence ) }} sure</template>
+				</span>
+				<cdx-icon class="ts-reasoning__chevron" :icon="cdxIconExpand" size="small" />
+			</summary>
 
-			<dl v-if="review.page_summary || review.change_summary || review.suggested_action" class="ts-dl ts-ai-card__facts">
-				<template v-if="review.page_summary">
-					<dt>The page</dt>
-					<dd>{{ review.page_summary }}</dd>
-				</template>
-				<template v-if="review.change_summary">
-					<dt>What changed</dt>
-					<dd>{{ review.change_summary }}</dd>
-				</template>
-				<template v-if="review.suggested_action">
-					<dt>Suggests</dt>
-					<dd>{{ ACTION_LABELS[ review.suggested_action ] ?? review.suggested_action }}</dd>
-				</template>
-			</dl>
+			<div class="ts-reasoning__body">
+				<p v-if="review.state === 'failed' && review.error" class="ts-meta">{{ review.error }}</p>
+				<p v-else-if="!current" class="ts-meta">Everything Jev sent is below.</p>
+				<p v-if="review.reason">{{ review.reason }}</p>
 
-			<div v-if="review.signals.length" class="ts-inline">
-				<cdx-info-chip v-for="signal in review.signals" :key="signal">{{ signal }}</cdx-info-chip>
+				<dl v-if="review.page_summary || review.change_summary || review.suggested_action" class="ts-dl">
+					<template v-if="review.page_summary">
+						<dt>The page</dt>
+						<dd>{{ review.page_summary }}</dd>
+					</template>
+					<template v-if="review.change_summary">
+						<dt>What changed</dt>
+						<dd>{{ review.change_summary }}</dd>
+					</template>
+					<template v-if="review.suggested_action">
+						<dt>Suggests</dt>
+						<dd>{{ ACTION_LABELS[ review.suggested_action ] ?? review.suggested_action }}</dd>
+					</template>
+				</dl>
+
+				<div v-if="review.signals.length" class="ts-inline ts-reasoning__signals">
+					<cdx-info-chip v-for="signal in review.signals" :key="signal">{{ signal }}</cdx-info-chip>
+				</div>
+
+				<p v-if="review.staff_bucket" class="ts-meta">
+					The AI said {{ modelLabel }}; {{ review.overridden_by ?? 'a person' }} moved it {{ ago( review.overridden_at ) }}.
+				</p>
+				<p v-else-if="review.confirmed_at" class="ts-meta">
+					{{ review.confirmed_by ?? 'A person' }} agreed and took it {{ ago( review.confirmed_at ) }}.
+				</p>
 			</div>
+		</details>
 
-			<p v-if="review.staff_bucket" class="ts-meta">
-				The AI said {{ modelLabel }}; {{ review.overridden_by ?? 'a person' }} moved it {{ ago( review.overridden_at ) }}.
-			</p>
-			<p v-else-if="review.confirmed_at" class="ts-meta">
-				{{ review.confirmed_by ?? 'A person' }} agreed and took it {{ ago( review.confirmed_at ) }}.
-			</p>
-		</cdx-message>
-
-		<div v-if="hasFacts" class="ts-inline">
+		<div v-if="!showHeader && hasFacts" class="ts-inline">
 			<span class="ts-meta">On the wiki now:</span>
 			<cdx-info-chip v-if="review.facts.reverted" status="success">Already reverted</cdx-info-chip>
 			<cdx-info-chip v-if="review.facts.deleted" status="success">Page or revision deleted</cdx-info-chip>
@@ -105,22 +132,24 @@
 		</section>
 
 		<dl class="ts-dl ts-ar-detail__about">
-			<dt>Editor</dt>
-			<dd>
-				<template v-if="review.author">
-					<a v-if="review.links.contributions" :href="review.links.contributions" target="_blank" rel="noopener noreferrer">
-						{{ review.author }}
-					</a>
-					<span v-else>{{ review.author }}</span>
-					<span v-if="author && author.ip" class="ts-meta"> · not signed in</span>
-					<span v-else-if="author" class="ts-meta">
-						· {{ author.edits ?? '?' }} edits
-						<template v-if="author.registered"> · joined {{ date( author.registered ) }}</template>
-						<template v-if="author.groups && author.groups.length"> · {{ author.groups.join( ', ' ) }}</template>
-					</span>
-				</template>
-				<span v-else class="ts-meta">Unknown</span>
-			</dd>
+			<template v-if="!showHeader">
+				<dt>Editor</dt>
+				<dd>
+					<template v-if="review.author">
+						<a v-if="review.links.contributions" :href="review.links.contributions" target="_blank" rel="noopener noreferrer">
+							{{ review.author }}
+						</a>
+						<span v-else>{{ review.author }}</span>
+						<span v-if="author && author.ip" class="ts-meta"> · not signed in</span>
+						<span v-else-if="author" class="ts-meta">
+							· {{ author.edits ?? '?' }} edits
+							<template v-if="author.registered"> · joined {{ date( author.registered ) }}</template>
+							<template v-if="author.groups && author.groups.length"> · {{ author.groups.join( ', ' ) }}</template>
+						</span>
+					</template>
+					<span v-else class="ts-meta">Unknown</span>
+				</dd>
+			</template>
 			<template v-if="row.edit_summary">
 				<dt>Edit summary</dt>
 				<dd>{{ row.edit_summary }}</dd>
@@ -136,8 +165,9 @@
 
 <script setup>
 import { computed } from 'vue';
-import { CdxInfoChip, CdxMessage, CdxProgressBar } from '@wikimedia/codex';
-import { ACTION_LABELS, bucket, diffLines, percent } from '../lib/autoreview.js';
+import { CdxIcon, CdxInfoChip, CdxProgressBar } from '@wikimedia/codex';
+import { cdxIconExpand, cdxIconRobot } from '@wikimedia/codex-icons';
+import { ACTION_LABELS, bucket, diffLines, percent, reasoningOpen } from '../lib/autoreview.js';
 import { ago, date } from '../lib/format.js';
 
 const props = defineProps( {
@@ -156,7 +186,6 @@ const review = computed( () => props.row.review ?? {
 } );
 
 const current = computed( () => bucket( review.value.bucket ) );
-const messageType = computed( () => ( { urgent: 'error', review: 'warning', unlikely: 'success' } )[ review.value.bucket ] ?? 'notice' );
 const modelLabel = computed( () => ( bucket( review.value.model_bucket )?.label ?? 'nothing' ).toLowerCase() );
 const author = computed( () => review.value.facts?.author ?? null );
 const evidence = computed( () => review.value.evidence ?? null );
@@ -165,4 +194,13 @@ const hasFacts = computed( () => {
 	const f = review.value.facts ?? {};
 	return f.reverted || f.deleted || f.hidden || f.current !== null && f.current !== undefined || f.created_page || author.value?.blocked;
 } );
+const headline = computed( () => review.value.headline || review.value.reason || '' );
+const pageTitle = computed( () => review.value.page_title ?? props.row.subject );
+const open = computed( () => !props.showHeader || reasoningOpen.value );
+
+function onToggle( event ) {
+	if ( props.showHeader ) {
+		reasoningOpen.value = event.target.open;
+	}
+}
 </script>

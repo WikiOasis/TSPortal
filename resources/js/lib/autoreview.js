@@ -1,4 +1,4 @@
-import { reactive, watch } from 'vue';
+import { reactive, ref, watch } from 'vue';
 
 export const BUCKETS = [
 	{ value: 'urgent', label: 'Needs review quickly', short: 'Quickly', chip: 'error', key: '1' },
@@ -143,6 +143,8 @@ export function agreement( row ) {
 	}
 	return { kind: 'take', label: 'Agree — take it', short: 'Take it' };
 }
+
+export const reasoningOpen = ref( false );
 
 const TALLY_KEY = 'tsportal:automation-tally';
 

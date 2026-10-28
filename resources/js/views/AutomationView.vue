@@ -24,288 +24,267 @@
 		</PageHeader>
 
 		<cdx-message v-if="loaded && !summary.enabled" type="warning" :allow-user-dismiss="false">
-			The AI is switched off because <code>OPENROUTER_API_KEY</code> is not set, so new flags aren't
-			being sorted. Anything already sorted can still be reviewed here.
+			The AI is off (<code>OPENROUTER_API_KEY</code> isn't set), so new flags aren't being sorted.
 		</cdx-message>
 
-		<cdx-tabs v-model:active="view" class="ts-ar-tabs" @update:active="reload">
-			<cdx-tab
+		<nav class="ts-strip ts-strip--buckets" aria-label="Buckets">
+			<button
 				v-for="tab in tabs"
 				:key="tab.value"
-				:name="tab.value"
-				:label="`${ tab.label } (${ ( tab.count ?? 0 ).toLocaleString() })`"
+				type="button"
+				class="ts-strip__cell"
+				:class="{ 'ts-strip__cell--on': tab.value === view, 'ts-strip__cell--empty': !tab.count }"
+				:aria-pressed="tab.value === view ? 'true' : 'false'"
+				@click="setView( tab.value )"
 			>
-				<template v-if="tab.value === view">
-					<div class="ts-toolbar ts-ar-toolbar">
-						<cdx-field v-if="mode === 'focus'" class="ts-toolbar__search">
-							<template #label>Find</template>
-							<cdx-search-input
-								v-model="q"
-								placeholder="Page, editor, reference or reason"
-								@update:model-value="debouncedReload"
-							/>
-						</cdx-field>
+				<span class="ts-stat__value">{{ ( tab.count ?? 0 ).toLocaleString() }}</span>
+				<span class="ts-stat__label">{{ tab.label }}</span>
+			</button>
+		</nav>
 
-						<cdx-field v-if="mode === 'focus'">
-							<template #label>Order</template>
-							<cdx-select v-model:selected="sort" :menu-items="sortOptions" @update:selected="reload" />
-						</cdx-field>
-
-						<cdx-field>
-							<template #label>Show</template>
-							<cdx-toggle-button-group
-								v-model="mode"
-								:buttons="modeButtons"
-								@update:model-value="reload"
-							/>
-						</cdx-field>
-					</div>
-
-					<cdx-checkbox v-if="mode === 'focus'" v-model="showTaken" class="ts-ar-taken" @update:model-value="reload">
-						Include flags another person has taken
-					</cdx-checkbox>
-
-					<div v-if="groupFilter" class="ts-inline ts-ar-filter">
-						<span class="ts-meta">Only</span>
-						<cdx-info-chip>{{ groupFilter }}</cdx-info-chip>
-						<cdx-button weight="quiet" size="small" @click="clearGroupFilter">Show everything</cdx-button>
-					</div>
-
-					<div v-if="closeBatch.items.length" class="ts-panel ts-bulkbar">
-						<span class="ts-bulkbar__count">
-							{{ closeBatch.items.length.toLocaleString() }} in the close batch
-						</span>
-						<cdx-button v-tooltip="'Shortcut: B'" action="progressive" weight="primary" @click="showBatch = true">
-							Check and close
-						</cdx-button>
-						<cdx-button v-tooltip="'Shortcut: F'" :disabled="working" @click="fileRows( closeBatch.items, 'the close batch' )">
-							Open a file for their pages
-						</cdx-button>
-						<cdx-button weight="quiet" @click="closeBatch.clear()">Empty the batch</cdx-button>
-					</div>
-
-					<LoadError :error="error" :retry="reload" />
-
-					<template v-if="mode === 'focus'">
-						<cdx-progress-bar v-if="loading && !items.length" aria-label="Loading the flags" />
-
-						<div v-else-if="!items.length && loaded" class="ts-panel ts-empty ts-stack">
-							<template v-if="view === 'waiting' && counts.waiting && summary.enabled">
-								<p>{{ counts.queued ? `The AI is sorting ${ counts.queued.toLocaleString() } now.` : 'These are waiting for the AI.' }}</p>
-								<cdx-button v-if="!counts.queued" action="progressive" @click="classifyWaiting( false )">Sort them now</cdx-button>
-							</template>
-							<template v-else>
-								<p>{{ view === 'all' ? 'No open flags.' : 'Nothing left in this bucket.' }}</p>
-								<cdx-button v-if="nextTab" @click="setView( nextTab.value )">
-									Go to {{ nextTab.label.toLowerCase() }}
-								</cdx-button>
-							</template>
-						</div>
-
-						<div v-else class="ts-ar-layout">
-							<ol :ref="setListRef" class="ts-ar-list ts-panel" aria-label="Flags">
-								<li v-for="( row, i ) in items" :key="row.id">
-									<button
-										type="button"
-										class="ts-ar-row"
-										:class="{
-											'ts-ar-row--current': i === index,
-											'ts-ar-row--batched': closeBatch.has( row.id )
-										}"
-										:aria-current="i === index ? 'true' : undefined"
-										@click="select( i )"
-									>
-										<span class="ts-ar-row__main">
-											<span class="ts-ar-row__title">{{ row.review?.page_title ?? row.subject }}</span>
-											<span class="ts-meta">
-												{{ row.review?.author ?? 'unknown editor' }} · {{ ago( row.filed ) }}
-												<template v-if="row.review?.confidence !== null && row.review?.confidence !== undefined">
-													· {{ percent( row.review.confidence ) }} sure
-												</template>
-											</span>
-											<span v-if="row.review?.reason" class="ts-ar-row__reason">{{ row.review.reason }}</span>
-											<span
-												v-if="closeBatch.has( row.id ) || row.assignee || row.review?.facts?.reverted || ( view === 'all' && bucket( row.review?.bucket ) )"
-												class="ts-inline ts-ar-row__chips"
-											>
-												<cdx-info-chip v-if="closeBatch.has( row.id )" status="success">In the batch</cdx-info-chip>
-												<cdx-info-chip v-if="view === 'all' && bucket( row.review?.bucket )" :status="bucket( row.review.bucket ).chip">
-													{{ bucket( row.review.bucket ).short }}
-												</cdx-info-chip>
-												<cdx-info-chip v-if="row.review?.facts?.reverted">Reverted</cdx-info-chip>
-												<cdx-info-chip v-if="row.assignee" status="warning">With {{ row.assignee.username }}</cdx-info-chip>
-											</span>
-										</span>
-									</button>
-								</li>
-								<li v-if="next !== null" class="ts-ar-list__more">
-									<cdx-button weight="quiet" :disabled="loading" @click="loadMore">
-										{{ loading ? 'Loading…' : `Load ${ Math.min( 50, total - items.length ).toLocaleString() } more` }}
-									</cdx-button>
-								</li>
-							</ol>
-
-							<section v-if="currentRow" class="ts-ar-pane ts-panel" aria-label="The flag being reviewed">
-								<div class="ts-ar-pane__nav">
-									<span class="ts-meta">
-										{{ index + 1 }} of {{ total.toLocaleString() }}
-										<template v-if="hiddenTaken"> · {{ hiddenTaken }} hidden because another person took {{ hiddenTaken === 1 ? 'it' : 'them' }}</template>
-									</span>
-									<span class="ts-inline">
-										<cdx-button v-tooltip="'Previous (K)'" weight="quiet" :disabled="index === 0" aria-label="Previous flag" @click="move( -1 )">
-											<cdx-icon :icon="cdxIconPrevious" />
-										</cdx-button>
-										<cdx-button v-tooltip="'Next (J)'" weight="quiet" :disabled="index >= items.length - 1" aria-label="Next flag" @click="move( 1 )">
-											<cdx-icon :icon="cdxIconNext" />
-										</cdx-button>
-									</span>
-								</div>
-
-								<AutoReviewDetail :row="currentRow" :loading="detailLoading" />
-
-								<div class="ts-ar-actions">
-									<div class="ts-inline">
-										<cdx-button
-											v-if="agree"
-											v-tooltip="'Shortcut: Y'"
-											action="progressive"
-											weight="primary"
-											:disabled="busy || ( agree.kind === 'take' && takenByOther )"
-											@click="doAgree"
-										>
-											{{ agree.label }}
-										</cdx-button>
-										<cdx-button
-											v-else-if="summary.enabled && currentRow.review?.state !== 'queued'"
-											action="progressive"
-											:disabled="busy"
-											@click="sortThis"
-										>
-											Ask the AI now
-										</cdx-button>
-
-										<cdx-button v-if="agree?.kind !== 'batch'" v-tooltip="'Shortcut: X'" :disabled="busy" @click="toggleBatch">
-											{{ closeBatch.has( currentRow.id ) ? 'Take out of the batch' : 'Add to close batch' }}
-										</cdx-button>
-										<cdx-button v-if="agree?.kind !== 'take'" v-tooltip="'Shortcut: T'" :disabled="busy || takenByOther" @click="takeIt">
-											Take it
-										</cdx-button>
-										<cdx-button v-tooltip="'Shortcut: C'" action="destructive" :disabled="busy" @click="closeNow">
-											Close now
-										</cdx-button>
-										<cdx-button v-tooltip="'Shortcut: F'" :disabled="busy || working" @click="fileCurrent">
-											Open a file for this page
-										</cdx-button>
-									</div>
-									<div class="ts-inline">
-										<span class="ts-meta">Not right? Move it to</span>
-										<cdx-button
-											v-for="b in BUCKETS"
-											:key="b.value"
-											v-tooltip="`Shortcut: ${ b.key }`"
-											size="small"
-											weight="quiet"
-											:disabled="busy || currentRow.review?.bucket === b.value"
-											@click="moveTo( b.value )"
-										>
-											{{ b.label }}
-										</cdx-button>
-									</div>
-								</div>
-							</section>
-						</div>
-					</template>
-
-					<template v-else>
-						<cdx-progress-bar v-if="groupsLoading" aria-label="Grouping the flags" />
-
-						<div v-else-if="!groups.length" class="ts-panel ts-empty">
-							No {{ mode === 'page' ? 'page' : 'editor' }} has more than one open flag here.
-						</div>
-
-						<div v-else class="ts-panel ts-scroll ts-bulk-table">
-							<table>
-								<thead>
-									<tr>
-										<th>{{ mode === 'page' ? 'Page' : 'Editor' }}</th>
-										<th>Flags</th>
-										<th>The AI says</th>
-										<th>{{ mode === 'page' ? 'Editors' : 'Pages' }}</th>
-										<th>Latest</th>
-										<th><span class="ts-visually-hidden">Actions</span></th>
-									</tr>
-								</thead>
-								<tbody>
-									<tr v-for="group in groups" :key="`${ group.wiki }|${ group.name }`">
-										<td :data-label="mode === 'page' ? 'Page' : 'Editor'">
-											<strong>{{ group.name }}</strong>
-											<div class="ts-meta ts-mono">{{ group.wiki }}</div>
-										</td>
-										<td data-label="Flags">{{ group.total }}</td>
-										<td data-label="The AI says">
-											<span class="ts-inline">
-												<cdx-info-chip v-if="group.urgent" status="error">{{ group.urgent }} quickly</cdx-info-chip>
-												<cdx-info-chip v-if="group.review" status="warning">{{ group.review }} review</cdx-info-chip>
-												<cdx-info-chip v-if="group.unlikely" status="success">{{ group.unlikely }} unlikely</cdx-info-chip>
-												<cdx-info-chip v-if="group.waiting">{{ group.waiting }} waiting</cdx-info-chip>
-											</span>
-										</td>
-										<td :data-label="mode === 'page' ? 'Editors' : 'Pages'">{{ group.spread }}</td>
-										<td data-label="Latest">{{ ago( group.newest ) }}</td>
-										<td data-label="">
-											<span class="ts-inline">
-												<cdx-button size="small" action="progressive" @click="reviewGroup( group )">Review</cdx-button>
-												<cdx-button size="small" :disabled="working" @click="batchGroup( group )">Add all to batch</cdx-button>
-												<cdx-button size="small" weight="quiet" :disabled="working" @click="mergeTarget = group">Merge</cdx-button>
-												<cdx-button size="small" :disabled="working" @click="fileGroup( group )">
-													{{ mode === 'page' ? 'Open a file for this page' : 'Open a file for their pages' }}
-												</cdx-button>
-											</span>
-										</td>
-									</tr>
-								</tbody>
-							</table>
-						</div>
-					</template>
-				</template>
-			</cdx-tab>
-		</cdx-tabs>
-
-		<section class="ts-section">
-			<details class="ts-panel ts-details" @toggle="onStatsToggle">
-				<summary>How well is the AI sorting?</summary>
-				<cdx-progress-bar v-if="statsLoading" :inline="true" aria-label="Loading" />
-				<div v-else-if="stats" class="ts-stack">
-					<p class="ts-meta">
-						{{ stats.classified.toLocaleString() }} sorted
-						<template v-if="stats.cost"> · about ${{ stats.cost.toFixed( 2 ) }} so far</template>
-						<template v-if="stats.last_classified"> · last {{ ago( stats.last_classified ) }}</template>.
-						“Agreed” means a person closed an “unlikely” flag, or took or acted on one the AI said needed review.
-						Keep an eye on “unlikely” flags that were acted on: those are the ones the AI missed.
-					</p>
-					<cdx-table
-						caption="How staff treated each bucket"
-						:hide-caption="true"
-						:columns="statsColumns"
-						:data="stats.buckets"
+		<div class="ts-ar-body">
+			<template v-if="view">
+				<div class="ts-ar-toolbar">
+					<cdx-search-input
+						v-if="mode === 'focus'"
+						v-model="q"
+						class="ts-ar-toolbar__search"
+						aria-label="Find flags"
+						placeholder="Find a page, editor, reference or reason"
+						@update:model-value="debouncedReload"
+					/>
+					<cdx-select
+						v-if="mode === 'focus'"
+						v-model:selected="sort"
+						:menu-items="sortOptions"
+						aria-label="Order"
+						@update:selected="reload"
+					/>
+					<cdx-checkbox
+						v-if="mode === 'focus'"
+						v-model="showTaken"
+						:inline="true"
+						class="ts-ar-toolbar__taken"
+						@update:model-value="reload"
 					>
-						<template #item-label="{ item }">{{ item }}</template>
-						<template #item-agreed="{ row }">
-							{{ row.agreed }}
-							<span v-if="decided( row )" class="ts-meta">({{ Math.round( row.agreed / decided( row ) * 100 ) }}%)</span>
-						</template>
-						<template #item-moved="{ row }">
-							{{ row.moved }}
-							<span v-if="row.moved" class="ts-meta">({{ movedSummary( row ) }})</span>
-						</template>
-						<template #item-acted="{ row }">
-							<cdx-info-chip v-if="row.bucket === 'unlikely' && row.acted" status="error">{{ row.acted }}</cdx-info-chip>
-							<template v-else>{{ row.acted }}</template>
-						</template>
-					</cdx-table>
+						Show taken
+					</cdx-checkbox>
+					<cdx-toggle-button-group
+						v-model="mode"
+						class="ts-ar-toolbar__mode"
+						:buttons="modeButtons"
+						@update:model-value="reload"
+					/>
 				</div>
-			</details>
-		</section>
+
+				<div v-if="groupFilter" class="ts-inline ts-ar-filter">
+					<span class="ts-meta">Only</span>
+					<cdx-info-chip>{{ groupFilter }}</cdx-info-chip>
+					<cdx-button weight="quiet" size="small" @click="clearGroupFilter">Show everything</cdx-button>
+				</div>
+
+				<div v-if="closeBatch.items.length" class="ts-panel ts-bulkbar">
+					<span class="ts-bulkbar__count">
+						{{ closeBatch.items.length.toLocaleString() }} in the close batch
+					</span>
+					<cdx-button v-tooltip="'Shortcut: B'" action="progressive" weight="primary" @click="showBatch = true">
+						Check and close
+					</cdx-button>
+					<cdx-button v-tooltip="'Shortcut: F'" :disabled="working" @click="fileRows( closeBatch.items, 'the close batch' )">
+						Open a file for their pages
+					</cdx-button>
+					<cdx-button weight="quiet" @click="closeBatch.clear()">Empty the batch</cdx-button>
+				</div>
+
+				<LoadError :error="error" :retry="reload" />
+
+				<template v-if="mode === 'focus'">
+					<cdx-progress-bar v-if="loading && !items.length" aria-label="Loading the flags" />
+
+					<div v-else-if="!items.length && loaded" class="ts-panel ts-ar-clear">
+						<span class="ts-ar-clear__mark" aria-hidden="true">
+							<cdx-icon :icon="clearState.icon" />
+						</span>
+						<h2 class="ts-ar-clear__title">{{ clearState.title }}</h2>
+						<template v-if="view === 'waiting' && counts.waiting && summary.enabled">
+							<p>{{ counts.queued ? `The AI is sorting ${ counts.queued.toLocaleString() } now.` : 'These are waiting for the AI.' }}</p>
+							<cdx-button v-if="!counts.queued" action="progressive" @click="classifyWaiting( false )">Sort them now</cdx-button>
+						</template>
+						<template v-else>
+							<p class="ts-meta">{{ clearState.text }}</p>
+							<cdx-button v-if="nextTab" @click="setView( nextTab.value )">
+								Go to {{ nextTab.label.toLowerCase() }}
+							</cdx-button>
+						</template>
+					</div>
+
+					<div v-else class="ts-ar-layout">
+						<ol :ref="setListRef" class="ts-ar-list ts-panel" aria-label="Flags">
+							<li v-for="( row, i ) in items" :key="row.id">
+								<button
+									type="button"
+									class="ts-ar-row"
+									:class="{
+										'ts-ar-row--current': i === index,
+										'ts-ar-row--batched': closeBatch.has( row.id ),
+										[ `ts-ar-row--${ row.review?.bucket }` ]: !!row.review?.bucket
+									}"
+									:aria-current="i === index ? 'true' : undefined"
+									@click="select( i )"
+								>
+									<span class="ts-ar-row__main">
+										<span class="ts-ar-row__title">{{ row.review?.headline || row.review?.reason || row.review?.page_title || row.subject }}</span>
+										<span class="ts-meta">
+											<template v-if="row.review?.headline || row.review?.reason">{{ row.review?.page_title ?? row.subject }} · </template>{{ row.review?.author ?? 'unknown editor' }} · {{ ago( row.filed ) }}
+											<template v-if="row.review?.confidence !== null && row.review?.confidence !== undefined">
+												· {{ percent( row.review.confidence ) }} sure
+											</template>
+										</span>
+										<span
+											v-if="closeBatch.has( row.id ) || row.assignee || row.review?.facts?.reverted || ( view === 'all' && bucket( row.review?.bucket ) )"
+											class="ts-inline ts-ar-row__chips"
+										>
+											<cdx-info-chip v-if="closeBatch.has( row.id )" status="success">In the batch</cdx-info-chip>
+											<cdx-info-chip v-if="view === 'all' && bucket( row.review?.bucket )" :status="bucket( row.review.bucket ).chip">
+												{{ bucket( row.review.bucket ).short }}
+											</cdx-info-chip>
+											<cdx-info-chip v-if="row.review?.facts?.reverted">Reverted</cdx-info-chip>
+											<cdx-info-chip v-if="row.assignee" status="warning">With {{ row.assignee.username }}</cdx-info-chip>
+										</span>
+									</span>
+								</button>
+							</li>
+							<li v-if="hiddenTaken" class="ts-ar-list__note ts-meta">
+								{{ hiddenTaken }} hidden because another person took {{ hiddenTaken === 1 ? 'it' : 'them' }}
+							</li>
+							<li v-if="next !== null" class="ts-ar-list__more">
+								<cdx-button weight="quiet" :disabled="loading" @click="loadMore">
+									{{ loading ? 'Loading…' : `Load ${ Math.min( 50, total - items.length ).toLocaleString() } more` }}
+								</cdx-button>
+							</li>
+						</ol>
+
+						<section v-if="currentRow" class="ts-ar-pane ts-panel" aria-label="The flag being reviewed">
+							<Transition :name="swapName" mode="out-in">
+							<AutoReviewDetail :key="currentRow.id" :row="currentRow" :loading="detailLoading">
+								<template #nav>
+									<span class="ts-ar-pane__nav">
+										<span class="ts-meta">{{ index + 1 }} / {{ total.toLocaleString() }}</span>
+										<cdx-button v-tooltip="'Previous (K)'" weight="quiet" size="small" :disabled="index === 0" aria-label="Previous flag" @click="move( -1 )">
+											<cdx-icon :icon="cdxIconPrevious" size="small" />
+										</cdx-button>
+										<cdx-button v-tooltip="'Next (J)'" weight="quiet" size="small" :disabled="index >= items.length - 1" aria-label="Next flag" @click="move( 1 )">
+											<cdx-icon :icon="cdxIconNext" size="small" />
+										</cdx-button>
+									</span>
+								</template>
+							</AutoReviewDetail>
+							</Transition>
+
+							<div class="ts-ar-actions">
+								<cdx-button
+									v-if="agree"
+									v-tooltip="'Shortcut: Y'"
+									action="progressive"
+									weight="primary"
+									:disabled="busy || ( agree.kind === 'take' && takenByOther )"
+									@click="doAgree"
+								>
+									<cdx-icon :icon="cdxIconCheck" size="small" />
+									{{ agree.label }}
+									<kbd class="ts-kbd">Y</kbd>
+								</cdx-button>
+								<cdx-button
+									v-else-if="summary.enabled && currentRow.review?.state !== 'queued'"
+									action="progressive"
+									:disabled="busy"
+									@click="sortThis"
+								>
+									Ask the AI now
+								</cdx-button>
+
+								<cdx-button v-if="agree?.kind !== 'batch'" v-tooltip="'Shortcut: X'" :disabled="busy" @click="toggleBatch">
+									{{ closeBatch.has( currentRow.id ) ? 'Take out of batch' : 'Add to batch' }}
+									<kbd class="ts-kbd">X</kbd>
+								</cdx-button>
+								<cdx-button v-if="agree?.kind !== 'take'" v-tooltip="'Shortcut: T'" :disabled="busy || takenByOther" @click="takeIt">
+									Take it
+									<kbd class="ts-kbd">T</kbd>
+								</cdx-button>
+								<cdx-button v-tooltip="'Shortcut: C'" action="destructive" :disabled="busy" @click="closeNow">
+									Close now
+									<kbd class="ts-kbd">C</kbd>
+								</cdx-button>
+
+								<cdx-menu-button
+									v-model:selected="flagChoice"
+									class="ts-ar-actions__more"
+									:menu-items="flagMenu"
+									:disabled="busy"
+									aria-label="Not right? More for this flag"
+									@update:selected="onFlagMenu"
+								>
+									<cdx-icon :icon="cdxIconEllipsis" />
+								</cdx-menu-button>
+							</div>
+						</section>
+					</div>
+				</template>
+
+				<template v-else>
+					<cdx-progress-bar v-if="groupsLoading" aria-label="Grouping the flags" />
+
+					<div v-else-if="!groups.length" class="ts-panel ts-empty">
+						No {{ mode === 'page' ? 'page' : 'editor' }} has more than one open flag here.
+					</div>
+
+					<div v-else class="ts-panel ts-scroll ts-bulk-table">
+						<table>
+							<thead>
+								<tr>
+									<th>{{ mode === 'page' ? 'Page' : 'Editor' }}</th>
+									<th>Flags</th>
+									<th>The AI says</th>
+									<th>{{ mode === 'page' ? 'Editors' : 'Pages' }}</th>
+									<th>Latest</th>
+									<th><span class="ts-visually-hidden">Actions</span></th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr v-for="group in groups" :key="`${ group.wiki }|${ group.name }`">
+									<td :data-label="mode === 'page' ? 'Page' : 'Editor'">
+										<strong>{{ group.name }}</strong>
+										<div class="ts-meta ts-mono">{{ group.wiki }}</div>
+									</td>
+									<td data-label="Flags">{{ group.total }}</td>
+									<td data-label="The AI says">
+										<span class="ts-inline">
+											<cdx-info-chip v-if="group.urgent" status="error">{{ group.urgent }} quickly</cdx-info-chip>
+											<cdx-info-chip v-if="group.review" status="warning">{{ group.review }} review</cdx-info-chip>
+											<cdx-info-chip v-if="group.unlikely" status="success">{{ group.unlikely }} unlikely</cdx-info-chip>
+											<cdx-info-chip v-if="group.waiting">{{ group.waiting }} waiting</cdx-info-chip>
+										</span>
+									</td>
+									<td :data-label="mode === 'page' ? 'Editors' : 'Pages'">{{ group.spread }}</td>
+									<td data-label="Latest">{{ ago( group.newest ) }}</td>
+									<td data-label="">
+										<span class="ts-inline">
+											<cdx-button size="small" action="progressive" @click="reviewGroup( group )">Review</cdx-button>
+											<cdx-button size="small" :disabled="working" @click="batchGroup( group )">Add all to batch</cdx-button>
+											<cdx-button size="small" weight="quiet" :disabled="working" @click="mergeTarget = group">Merge</cdx-button>
+											<cdx-button size="small" :disabled="working" @click="fileGroup( group )">
+												{{ mode === 'page' ? 'Open a file for this page' : 'Open a file for their pages' }}
+											</cdx-button>
+										</span>
+									</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
+				</template>
+			</template>
+		</div>
+
 
 		<div class="ts-visually-hidden" role="status" aria-live="polite">{{ spoken }}</div>
 
@@ -346,10 +325,10 @@
 import { computed, inject, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
-	CdxButton, CdxCheckbox, CdxDialog, CdxField, CdxIcon, CdxInfoChip, CdxMenuButton, CdxMessage,
-	CdxProgressBar, CdxSearchInput, CdxSelect, CdxTab, CdxTable, CdxTabs, CdxToggleButtonGroup, CdxTooltip
+	CdxButton, CdxCheckbox, CdxDialog, CdxIcon, CdxInfoChip, CdxMenuButton, CdxMessage,
+	CdxProgressBar, CdxSearchInput, CdxSelect, CdxTable, CdxToggleButtonGroup, CdxTooltip
 } from '@wikimedia/codex';
-import { cdxIconEllipsis, cdxIconKeyboard, cdxIconNext, cdxIconPrevious } from '@wikimedia/codex-icons';
+import { cdxIconCheck, cdxIconClock, cdxIconEllipsis, cdxIconSearch, cdxIconKeyboard, cdxIconNext, cdxIconPrevious } from '@wikimedia/codex-icons';
 import PageHeader from '../components/PageHeader.vue';
 import LoadError from '../components/LoadError.vue';
 import AutoReviewDetail from '../components/AutoReviewDetail.vue';
@@ -414,23 +393,12 @@ function setListRef( el ) {
 	listRef.value = el;
 }
 
-const statsColumns = [
-	{ id: 'label', label: 'The AI said' },
-	{ id: 'total', label: 'Sorted', textAlign: 'number' },
-	{ id: 'agreed', label: 'A person agreed' },
-	{ id: 'moved', label: 'A person moved it' },
-	{ id: 'acted', label: 'Acted on' },
-	{ id: 'open', label: 'Still open', textAlign: 'number' }
-];
-
 const subtitle = computed( () => {
 	if ( !loaded.value ) {
-		return 'Work through Jev\'s flags with the AI\'s read on each one.';
+		return 'Jev\'s flags, with the AI\'s read on each one.';
 	}
 	const open = ( counts.value.open ?? 0 ).toLocaleString();
-	return summary.enabled
-		? `Work through Jev's flags with the AI's read on each one. ${ open } open, sorted by ${ summary.model }.`
-		: `Work through Jev's flags with the AI's read on each one. ${ open } open.`;
+	return summary.enabled ? `${ open } open · sorted by ${ summary.model }` : `${ open } open`;
 } );
 const details = reactive( {} );
 const detailLoading = ref( false );
@@ -439,13 +407,11 @@ const groups = ref( [] );
 const groupsLoading = ref( false );
 const mergeTarget = ref( null );
 
-const stats = ref( null );
-const statsLoading = ref( false );
-
 const showBatch = ref( false );
 
 const showKeys = ref( false );
 const menuChoice = ref( null );
+const flagChoice = ref( null );
 const spoken = ref( '' );
 
 const modeButtons = [
@@ -481,6 +447,57 @@ const menuItems = computed( () => [
 	{ value: 'fold', label: 'Merge repeat flags on the same edit' },
 	{ value: 'queue', label: 'See these in the queue' }
 ] );
+
+const flagMenu = computed( () => [
+	{
+		label: 'Not right? Move it to',
+		items: BUCKETS.map( ( b ) => ( {
+			value: `move:${ b.value }`,
+			label: b.label,
+			supportingText: b.key,
+			disabled: currentRow.value?.review?.bucket === b.value
+		} ) )
+	},
+	{
+		label: 'Elsewhere',
+		hideLabel: true,
+		items: [
+			{ value: 'file', label: 'Open a file for this page', supportingText: 'F', disabled: working.value },
+			{ value: 'wiki', label: 'Open the edit on the wiki', supportingText: 'O' },
+			{ value: 'case', label: 'Open the case', supportingText: '↵' }
+		]
+	}
+] );
+
+function onFlagMenu( value ) {
+	flagChoice.value = null;
+	if ( typeof value !== 'string' ) {
+		return;
+	}
+	if ( value.startsWith( 'move:' ) ) {
+		moveTo( value.slice( 5 ) );
+	} else if ( value === 'file' ) {
+		fileCurrent();
+	} else if ( value === 'wiki' ) {
+		openOnWiki();
+	} else if ( value === 'case' ) {
+		openCase();
+	}
+}
+
+const clearState = computed( () => {
+	if ( view.value === 'waiting' && counts.value.waiting ) {
+		return { icon: cdxIconClock, title: 'Waiting on the AI', text: '' };
+	}
+	if ( q.value || groupFilter.value ) {
+		return { icon: cdxIconSearch, title: 'Nothing matches', text: 'Try a different search, or show everything.' };
+	}
+	return {
+		icon: cdxIconCheck,
+		title: 'All clear',
+		text: view.value === 'all' ? 'No open flags anywhere.' : 'Nothing left in this bucket.'
+	};
+} );
 
 const tallyTotal = computed( () => tally.closed + tally.taken + tally.moved );
 
@@ -677,7 +694,10 @@ function scrollToCurrent() {
 	} );
 }
 
+const swapName = ref( 'ts-ar-next' );
+
 function select( i ) {
+	swapName.value = i < index.value ? 'ts-ar-prev' : 'ts-ar-next';
 	index.value = Math.max( 0, Math.min( items.value.length - 1, i ) );
 	scrollToCurrent();
 	fetchDetail();
@@ -1048,34 +1068,6 @@ function onBatchClosed( { ids, counts: fresh } ) {
 	if ( mode.value !== 'focus' ) {
 		loadGroups();
 	}
-}
-
-async function loadStats() {
-	statsLoading.value = true;
-	try {
-		stats.value = await api.autoReviewStats();
-	} catch ( e ) {
-		notify( e.message, 'error' );
-	} finally {
-		statsLoading.value = false;
-	}
-}
-
-function onStatsToggle( event ) {
-	if ( event.target.open ) {
-		loadStats();
-	}
-}
-
-function decided( row ) {
-	return row.bucket === 'unlikely' ? row.no_action + row.acted + row.moved : row.agreed + row.no_action + row.moved;
-}
-
-function movedSummary( row ) {
-	return BUCKETS
-		.filter( ( b ) => row.moved_to[ b.value ] )
-		.map( ( b ) => `${ row.moved_to[ b.value ] } to ${ b.short.toLowerCase() }` )
-		.join( ', ' );
 }
 
 let poll = null;

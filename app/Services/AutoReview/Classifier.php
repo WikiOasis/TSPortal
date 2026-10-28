@@ -30,6 +30,7 @@ Answer with a single JSON object and nothing else:
 {
   "bucket": "urgent" | "review" | "unlikely",
   "confidence": number between 0 and 1 (how sure you are of the bucket),
+  "headline": a plain one-line summary of what was actually done, at most 12 words, no trailing full stop, written so a staff member scanning a list knows what this flag is (e.g. "Posts another editor's home address on a talk page", "Replaces the help page with nonsense"),
   "page_summary": one sentence on what the page is and what the wiki seems to be about,
   "change_summary": one sentence on what the flagged edit or page content actually does,
   "reason": one or two sentences explaining the bucket to a staff member,
@@ -42,7 +43,7 @@ PROMPT;
 
     /**
      * @param  array<string, mixed>  $evidence
-     * @return array{bucket: string, confidence: float, page_summary: string, change_summary: string,
+     * @return array{bucket: string, confidence: float, headline: string, page_summary: string, change_summary: string,
      *               reason: string, signals: list<string>, suggested_action: ?string,
      *               model: string, tokens: ?int, cost: ?float}
      */
@@ -139,7 +140,7 @@ PROMPT;
     }
 
     /**
-     * @return array{bucket: string, confidence: float, page_summary: string, change_summary: string,
+     * @return array{bucket: string, confidence: float, headline: string, page_summary: string, change_summary: string,
      *               reason: string, signals: list<string>, suggested_action: ?string}
      */
     public function parse(string $content): array
@@ -174,12 +175,16 @@ PROMPT;
 
         $action = is_string($json['suggested_action'] ?? null) ? strtolower(trim($json['suggested_action'])) : null;
 
+        $changeSummary = $this->field($json['change_summary'] ?? '');
+        $reason = $this->field($json['reason'] ?? '');
+
         return [
             'bucket' => $bucket,
             'confidence' => max(0.0, min(1.0, $confidence)),
+            'headline' => $this->headline($json['headline'] ?? '', $changeSummary !== '' ? $changeSummary : $reason),
             'page_summary' => $this->field($json['page_summary'] ?? ''),
-            'change_summary' => $this->field($json['change_summary'] ?? ''),
-            'reason' => $this->field($json['reason'] ?? ''),
+            'change_summary' => $changeSummary,
+            'reason' => $reason,
             'signals' => array_slice($signals, 0, 5),
             'suggested_action' => in_array($action, AutomatedReview::ACTIONS, true) ? $action : null,
         ];
@@ -210,6 +215,14 @@ PROMPT;
         return is_array($decoded) ? $decoded : null;
     }
 
+    private function headline(mixed $value, string $fallback): string
+    {
+        $line = $this->oneLine(is_string($value) ? $value : '');
+        $line = $line !== '' ? $line : $fallback;
+
+        return Str::limit(rtrim($line, '. '), 140, '…');
+    }
+
     private function field(mixed $value): string
     {
         return Str::limit($this->oneLine(is_string($value) ? $value : ''), 600);
@@ -228,10 +241,11 @@ PROMPT;
         return [
             'type' => 'object',
             'additionalProperties' => false,
-            'required' => ['bucket', 'confidence', 'page_summary', 'change_summary', 'reason', 'signals', 'suggested_action'],
+            'required' => ['bucket', 'confidence', 'headline', 'page_summary', 'change_summary', 'reason', 'signals', 'suggested_action'],
             'properties' => [
                 'bucket' => ['type' => 'string', 'enum' => AutomatedReview::BUCKETS],
                 'confidence' => ['type' => 'number'],
+                'headline' => ['type' => 'string'],
                 'page_summary' => ['type' => 'string'],
                 'change_summary' => ['type' => 'string'],
                 'reason' => ['type' => 'string'],

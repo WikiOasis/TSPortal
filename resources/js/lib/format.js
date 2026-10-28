@@ -216,6 +216,7 @@ export const ROLE_LABELS = {
 	subject: 'Subject',
 	witness: 'Witness',
 	reporter: 'Reporter',
+	appellant: 'Appellant',
 	related: 'Related',
 	reported: 'Reported',
 	mentioned: 'Mentioned'
@@ -226,6 +227,7 @@ export const ROLE_CHIP = {
 	reported: 'error',
 	witness: 'notice',
 	reporter: 'notice',
+	appellant: 'notice',
 	related: 'notice',
 	mentioned: 'notice'
 };

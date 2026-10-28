@@ -6,27 +6,17 @@
 		<template v-if="item">
 			<PageHeader :title="item.subject" :subtitle="`${ TYPE_LABELS[ item.type ] ?? item.type } · ${ item.reference }`">
 				<template #actions>
-					<StatusChip kind="case" :value="item.status" />
-					<StatusChip kind="priority" :value="item.priority" />
-
 					<cdx-button
-						v-if="!item.assignee || item.assignee.id !== session.user.id"
+						v-if="canConcludeAppeal"
 						action="progressive"
-						@click="claim"
+						weight="primary"
+						@click="showConcludeAppeal = true"
 					>
-						Take this
+						<cdx-icon :icon="cdxIconCheck" size="small" />
+						Conclude this appeal
 					</cdx-button>
-
 					<cdx-button
-						v-if="!item.duplicate_of"
-						@click="showDuplicate = true"
-					>
-						<cdx-icon :icon="cdxIconCopy" size="small" />
-						Duplicate of…
-					</cdx-button>
-
-					<cdx-button
-						v-if="!item.investigation"
+						v-else-if="canOpenInvestigation"
 						action="progressive"
 						weight="primary"
 						@click="showOpenFile = true"
@@ -34,12 +24,16 @@
 						<cdx-icon :icon="cdxIconAdd" size="small" />
 						Open an investigation
 					</cdx-button>
-					<cdx-button
-						v-else
-						@click="$router.push( { name: 'investigation', params: { id: item.investigation.id } } )"
+
+					<cdx-menu-button
+						v-if="moreMenu.length"
+						v-model:selected="moreChoice"
+						:menu-items="moreMenu"
+						aria-label="More for this case"
+						@update:selected="onMore"
 					>
-						Go to {{ item.investigation.reference }}
-					</cdx-button>
+						<cdx-icon :icon="cdxIconEllipsis" />
+					</cdx-menu-button>
 				</template>
 			</PageHeader>
 
@@ -52,35 +46,6 @@
 				Please validate this reported threat to life, and contact emergency services
                 as appropriate with internal procedure.
 			</cdx-message>
-
-			<section v-if="item.automated && autoReviewRow" class="ts-section ts-ar-case">
-				<div class="ts-ar-case__head">
-					<h2 class="ts-section__title">
-						<cdx-icon :icon="cdxIconRobot" size="small" />
-						Raised by Jev, not by a person
-					</h2>
-					<span class="ts-inline">
-						<router-link
-							v-if="item.status !== 'closed' && item.status !== 'rejected' && item.status !== 'duplicate'"
-							:to="{ name: 'automation', query: { case: item.id } }"
-						>
-							Review in Automation
-						</router-link>
-						<cdx-menu-button
-							v-model:selected="bucketChoice"
-							:menu-items="bucketMenu"
-							:disabled="reviewBusy"
-							aria-label="Change the AI's bucket"
-							@update:selected="onBucketMenu"
-						>
-							Change bucket
-						</cdx-menu-button>
-					</span>
-				</div>
-				<div class="ts-panel">
-					<AutoReviewDetail :row="autoReviewRow" :show-header="false" />
-				</div>
-			</section>
 
 			<cdx-message v-if="item.duplicate_of" type="notice" :allow-user-dismiss="false">
 				<p>
@@ -103,61 +68,62 @@
 				</cdx-button>
 			</cdx-message>
 
-			<cdx-message
-				v-if="item.duplicates && item.duplicates.length"
-				type="notice"
-				:allow-user-dismiss="false"
-			>
-				{{ item.duplicates.length }} other report{{ item.duplicates.length === 1 ? ' was' : 's were' }}
-				merged into this one:
-				<template v-for="( d, i ) in item.duplicates" :key="d.id">
-					<template v-if="i">, </template>
-					<router-link :to="{ name: 'case', params: { id: d.id } }" class="ts-mono">
-						{{ d.reference }}
-					</router-link>
-				</template>.
-				Answering this one answers them all.
-			</cdx-message>
-
-			<cdx-message v-if="item.anonymous && !item.automated" type="notice" :allow-user-dismiss="true">
-				This was filed anonymously. Comments will not reach the reporter.
-			</cdx-message>
-
 			<cdx-message v-if="item.sync.error" type="warning" :allow-user-dismiss="false">
 				The wiki has not been able to make an update to this case:
 				{{ item.sync.error }}
 			</cdx-message>
 
-			<cdx-message v-if="item.investigation" type="notice" :allow-user-dismiss="false">
-				Being answered as part of
-				<router-link :to="{ name: 'investigation', params: { id: item.investigation.id } }" class="ts-mono">
-					{{ item.investigation.reference }}
-				</router-link>
-				— {{ item.investigation.title }}.
-				<template v-if="item.investigation.live">
-					It will be closed when that investigation is. The reporter is told only that it is being
-					investigated into.
-				</template>
-				<template v-else>
-					That investigation is closed, so this can be answered on its own.
-				</template>
-			</cdx-message>
-
 			<div class="ts-split">
 				<div>
-					<section class="ts-section">
-						<h2 class="ts-section__title">What was said</h2>
+					<section v-if="item.automated && autoReviewRow" class="ts-section ts-ar-case">
+						<div class="ts-ar-case__head">
+							<h2 class="ts-section__title">
+								<cdx-icon :icon="cdxIconRobot" size="small" />
+								Raised by Jev, not by a person
+							</h2>
+							<span class="ts-inline">
+								<router-link
+									v-if="item.status !== 'closed' && item.status !== 'rejected' && item.status !== 'duplicate'"
+									:to="{ name: 'automation', query: { case: item.id } }"
+								>
+									Review in Automation
+								</router-link>
+								<cdx-menu-button
+									v-model:selected="bucketChoice"
+									:menu-items="bucketMenu"
+									:disabled="reviewBusy"
+									aria-label="Change the AI's bucket"
+									@update:selected="onBucketMenu"
+								>
+									Change bucket
+								</cdx-menu-button>
+							</span>
+						</div>
 						<div class="ts-panel">
+							<AutoReviewDetail :row="autoReviewRow" :show-header="false" />
+						</div>
+					</section>
+
+					<AppealPanel
+						v-if="item.appeal"
+						:case-id="item.id"
+						:appeal="item.appeal"
+						@changed="load"
+					/>
+
+					<section class="ts-section">
+						<h2 class="ts-section__title">{{ item.appeal ? 'What they said' : 'What was said' }}</h2>
+						<div class="ts-panel ts-stack">
 							<p v-if="item.summary" class="ts-summary">{{ item.summary }}</p>
 							<p v-else class="ts-meta">No summary was given.</p>
 
 							<div v-if="item.about.length" class="ts-inline">
-								<span class="ts-meta">About:</span>
+								<span class="ts-meta">About</span>
 								<cdx-info-chip v-for="name in item.about" :key="name">{{ name }}</cdx-info-chip>
 							</div>
 
-							<div v-if="( item.pages ?? [] ).length" class="ts-inline ts-case-pages">
-								<span class="ts-meta">Pages:</span>
+							<div v-if="( item.pages ?? [] ).length" class="ts-inline">
+								<span class="ts-meta">Pages</span>
 								<cdx-info-chip
 									v-for="page in item.pages"
 									:key="`${ page.wiki }|${ page.title }`"
@@ -176,34 +142,30 @@
 								<span v-else class="ts-meta">Open an investigation to act on these pages.</span>
 							</div>
 
-							<div class="ts-inline" style="margin-top: 0.75rem;">
-								<span class="ts-meta">Filed under:</span>
-								<cdx-info-chip
-									v-for="category in ( item.categories ?? [] )"
-									:key="category.id"
-									:status="category.primary ? 'notice' : 'notice'"
-								>
-									{{ category.label }}
-								</cdx-info-chip>
-								<span v-if="!( item.categories ?? [] ).length" class="ts-meta">
-									nothing — this wiki's form did not say, so nobody can count it
-								</span>
-								<cdx-button weight="quiet" size="small" @click="editingCategories = true">
-									Change
-								</cdx-button>
-							</div>
-						</div>
-					</section>
+							<div class="ts-case-said__foot">
+								<div class="ts-inline">
+									<cdx-info-chip
+										v-for="category in ( item.categories ?? [] )"
+										:key="category.id"
+									>
+										{{ category.label }}
+									</cdx-info-chip>
+									<cdx-button weight="quiet" size="small" @click="editingCategories = true">
+										<cdx-icon v-if="!( item.categories ?? [] ).length" :icon="cdxIconTag" size="small" />
+										{{ ( item.categories ?? [] ).length ? 'Change' : 'Add a category' }}
+									</cdx-button>
+								</div>
 
-					<section v-if="hasAnswers" class="ts-section">
-						<h2 class="ts-section__title">The submission</h2>
-						<div class="ts-panel">
-							<dl class="ts-dl">
-								<template v-for="( value, key ) in item.answers" :key="key">
-									<dt>{{ key }}</dt>
-									<dd>{{ renderAnswer( value ) }}</dd>
-								</template>
-							</dl>
+								<details v-if="extraAnswers.length" class="ts-details ts-case-said__answers">
+									<summary>Everything they submitted</summary>
+									<dl class="ts-dl">
+										<template v-for="[ key, value ] in extraAnswers" :key="key">
+											<dt>{{ key }}</dt>
+											<dd>{{ renderAnswer( value ) }}</dd>
+										</template>
+									</dl>
+								</details>
+							</div>
 						</div>
 					</section>
 
@@ -228,13 +190,6 @@
 							</div>
 						</div>
 					</section>
-
-					<AppealPanel
-						v-if="item.appeal"
-						:case-id="item.id"
-						:appeal="item.appeal"
-						@changed="load"
-					/>
 
 					<DataRequestPanel
 						v-if="item.data_request"
@@ -266,62 +221,110 @@
 					</section>
 				</div>
 
-				<aside class="ts-stack">
+				<aside class="ts-stack ts-case-aside">
 					<div class="ts-panel">
 						<h2 class="ts-section__title">Handling</h2>
-						<div class="ts-stack">
-							<dl class="ts-dl">
-								<dt>Status</dt>
-								<dd><StatusChip kind="case" :value="item.status" /></dd>
-								<dt>With</dt>
-								<dd>{{ item.assignee ? item.assignee.username : 'Nobody' }}</dd>
-								<dt>Priority</dt>
-								<dd><StatusChip kind="priority" :value="item.priority" /></dd>
-								<dt>Filed</dt>
-								<dd>{{ dateTime( item.filed ) }}</dd>
-								<dt>Last change</dt>
-								<dd>{{ ago( item.updated ) }}</dd>
-								<dt>Wiki</dt>
-								<dd>{{ item.wiki || 'not recorded' }}</dd>
-								<dt>Mirrored</dt>
-								<dd>{{ item.sync.at ? dateTime( item.sync.at ) : 'not yet' }}</dd>
-							</dl>
-						</div>
-					</div>
-
-					<div v-if="item.reporter" class="ts-panel">
-						<h2 class="ts-section__title">Filed by</h2>
-						<p>
-							<router-link :to="{ name: 'subject', params: { id: item.reporter.id } }">
-								{{ item.reporter.username }}
-							</router-link>
+						<dl class="ts-dl">
+							<dt>Status</dt>
+							<dd><StatusChip kind="case" :value="item.status" /></dd>
+							<dt>With</dt>
+							<dd class="ts-inline">
+								<span>{{ item.assignee ? item.assignee.username : 'Nobody' }}</span>
+								<cdx-button
+									v-if="!item.assignee || item.assignee.id !== session.user.id"
+									weight="quiet"
+									action="progressive"
+									size="small"
+									@click="claim"
+								>
+									Take this
+								</cdx-button>
+							</dd>
+							<dt>Priority</dt>
+							<dd><StatusChip kind="priority" :value="item.priority" /></dd>
+							<template v-if="item.investigation">
+								<dt>Investigation</dt>
+								<dd>
+									<div class="ts-inline">
+										<router-link
+											:to="{ name: 'investigation', params: { id: item.investigation.id } }"
+											class="ts-mono"
+										>
+											{{ item.investigation.reference }}
+										</router-link>
+										<StatusChip kind="investigation" :value="item.investigation.status" />
+									</div>
+									<div class="ts-meta">
+										{{ item.investigation.title }}<template v-if="item.investigation.live"> · closes this with it</template>
+									</div>
+								</dd>
+							</template>
+							<template v-if="item.duplicates && item.duplicates.length">
+								<dt>Merged in</dt>
+								<dd>
+									<template v-for="( d, i ) in item.duplicates" :key="d.id">
+										<template v-if="i">, </template>
+										<router-link :to="{ name: 'case', params: { id: d.id } }" class="ts-mono">
+											{{ d.reference }}
+										</router-link>
+									</template>
+								</dd>
+							</template>
+							<dt>Filed</dt>
+							<dd>{{ dateTime( item.filed ) }}</dd>
+							<dt>Wiki</dt>
+							<dd>{{ item.wiki || 'not recorded' }}</dd>
+						</dl>
+						<p class="ts-meta ts-case-aside__foot">
+							Updated {{ ago( item.updated ) }} ·
+							{{ item.sync.at ? `mirrored ${ ago( item.sync.at ) }` : 'not mirrored yet' }}
 						</p>
-						<StatusChip kind="standing" :value="item.reporter.standing" />
 					</div>
 
-					<div v-if="item.subjects.length" class="ts-panel">
-						<h2 class="ts-section__title">About these accounts</h2>
-						<div class="ts-stack">
-							<div v-for="subject in item.subjects" :key="subject.id" class="ts-inline">
-								<router-link :to="{ name: 'subject', params: { id: subject.id } }">
-									{{ subject.username }}
+					<div v-if="accounts.length || ( item.anonymous && !item.automated )" class="ts-panel">
+						<h2 class="ts-section__title">Accounts</h2>
+						<ul class="ts-accounts">
+							<li v-for="account in accounts" :key="account.id" class="ts-accounts__row">
+								<router-link
+									:to="{ name: 'subject', params: { id: account.id } }"
+									class="ts-accounts__name"
+								>
+									{{ account.username }}
 								</router-link>
-								<StatusChip kind="standing" :value="subject.standing" />
-							</div>
-						</div>
+								<span class="ts-accounts__chips">
+									<StatusChip kind="role" :value="account.role" />
+									<StatusChip kind="standing" :value="account.standing" />
+								</span>
+							</li>
+							<li v-if="item.anonymous && !item.automated" class="ts-accounts__row">
+								<span class="ts-accounts__name ts-meta">Anonymous reporter</span>
+								<span class="ts-meta">replies will not reach them</span>
+							</li>
+						</ul>
 					</div>
 
 					<div v-if="item.sanctions.length" class="ts-panel">
 						<h2 class="ts-section__title">Came out of this</h2>
-						<ul>
-							<li v-for="s in item.sanctions" :key="s.id">
-								<span class="ts-mono">{{ s.reference }}</span> — {{ s.label }}
-								<span v-if="!s.active" class="ts-meta">(no longer in force)</span>
+						<ul class="ts-accounts">
+							<li v-for="s in item.sanctions" :key="s.id" class="ts-accounts__row">
+								<router-link :to="{ name: 'item', params: { reference: s.reference } }" class="ts-accounts__name">
+									<span class="ts-mono">{{ s.reference }}</span> {{ s.label }}
+								</router-link>
+								<StatusChip kind="force" :value="s.active ? 'in-force' : 'lifted'" />
 							</li>
 						</ul>
 					</div>
 				</aside>
 			</div>
+			<ConcludeAppealDialog
+				v-if="item.appeal"
+				v-model:open="showConcludeAppeal"
+				:case-id="item.id"
+				:appeal="item.appeal"
+				:anonymous="item.anonymous"
+				@concluded="load"
+			/>
+
 			<OpenInvestigationDialog
 				v-model:open="showOpenFile"
 				:from-case="item"
@@ -360,7 +363,9 @@ import {
 	CdxButton, CdxDialog, CdxField, CdxIcon, CdxInfoChip, CdxMenuButton, CdxMessage, CdxProgressBar,
 	CdxTextArea
 } from '@wikimedia/codex';
-import { cdxIconAdd, cdxIconCopy, cdxIconRobot } from '@wikimedia/codex-icons';
+import {
+	cdxIconAdd, cdxIconCheck, cdxIconCopy, cdxIconEllipsis, cdxIconRobot, cdxIconSearch, cdxIconTag
+} from '@wikimedia/codex-icons';
 import PageHeader from '../components/PageHeader.vue';
 import LoadError from '../components/LoadError.vue';
 import StatusChip from '../components/StatusChip.vue';
@@ -368,6 +373,7 @@ import ActivityFeed from '../components/ActivityFeed.vue';
 import ActivityComposer from '../components/ActivityComposer.vue';
 import DataRequestPanel from '../components/DataRequestPanel.vue';
 import AppealPanel from '../components/AppealPanel.vue';
+import ConcludeAppealDialog from '../components/ConcludeAppealDialog.vue';
 import OpenInvestigationDialog from '../components/OpenInvestigationDialog.vue';
 import MarkDuplicateDialog from '../components/MarkDuplicateDialog.vue';
 import AutoReviewDetail from '../components/AutoReviewDetail.vue';
@@ -389,6 +395,8 @@ const loading = ref( false );
 const error = ref( null );
 const showOpenFile = ref( false );
 const showDuplicate = ref( false );
+const showConcludeAppeal = ref( false );
+const moreChoice = ref( null );
 const unmerging = ref( false );
 const team = ref( [] );
 const editingCategories = ref( false );
@@ -468,7 +476,72 @@ async function sortAgain() {
 	}
 }
 
-const hasAnswers = computed( () => item.value && Object.keys( item.value.answers ?? {} ).length > 0 );
+const canConcludeAppeal = computed( () => !!item.value?.appeal && !item.value.appeal.outcome && !item.value.duplicate_of );
+const canOpenInvestigation = computed( () => !!item.value && !item.value.investigation && !item.value.duplicate_of );
+
+const moreMenu = computed( () => {
+	const data = item.value;
+	if ( !data ) {
+		return [];
+	}
+	const items = [];
+	if ( canConcludeAppeal.value && canOpenInvestigation.value ) {
+		items.push( { value: 'investigate', label: 'Open an investigation', icon: cdxIconAdd } );
+	}
+	if ( data.investigation ) {
+		items.push( { value: 'investigation', label: `Go to ${ data.investigation.reference }`, icon: cdxIconSearch } );
+	}
+	if ( !data.duplicate_of ) {
+		items.push( { value: 'duplicate', label: 'Mark as a duplicate…', icon: cdxIconCopy } );
+	}
+	items.push( { value: 'categories', label: 'Change categories…', icon: cdxIconTag } );
+	return items;
+} );
+
+function onMore( value ) {
+	moreChoice.value = null;
+	if ( value === 'investigate' ) {
+		showOpenFile.value = true;
+	} else if ( value === 'investigation' ) {
+		router.push( { name: 'investigation', params: { id: item.value.investigation.id } } );
+	} else if ( value === 'duplicate' ) {
+		showDuplicate.value = true;
+	} else if ( value === 'categories' ) {
+		editingCategories.value = true;
+	}
+}
+
+const accounts = computed( () => {
+	const data = item.value;
+	if ( !data ) {
+		return [];
+	}
+	const rows = [];
+	if ( data.reporter ) {
+		rows.push( {
+			id: data.reporter.id,
+			username: data.reporter.username,
+			standing: data.reporter.standing,
+			role: data.appeal ? 'appellant' : 'reporter'
+		} );
+	}
+	for ( const s of data.subjects ?? [] ) {
+		if ( !rows.some( ( r ) => r.id === s.id ) ) {
+			rows.push( { id: s.id, username: s.username, standing: s.standing, role: s.role || 'subject' } );
+		}
+	}
+	return rows;
+} );
+
+function squash( value ) {
+	return String( value ?? '' ).replace( /\s+/g, ' ' ).trim();
+}
+
+const extraAnswers = computed( () => {
+	const summary = squash( item.value?.summary );
+	return Object.entries( item.value?.answers ?? {} )
+		.filter( ( [ , value ] ) => !( typeof value === 'string' && summary && squash( value ) === summary ) );
+} );
 
 const fileSubjects = computed( () => {
 	if ( !item.value ) {

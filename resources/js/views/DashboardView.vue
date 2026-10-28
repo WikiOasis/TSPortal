@@ -33,10 +33,10 @@
 				</div>
 			</router-link>
 
-			<div class="ts-grid ts-kpis">
+			<nav class="ts-strip" aria-label="At a glance">
 				<router-link
 					:to="{ name: 'queue' }"
-					class="ts-panel ts-stat ts-stat--link"
+					class="ts-strip__cell ts-stat"
 				>
 					<div class="ts-stat__value">{{ data.open_items.total }}</div>
 					<div class="ts-stat__label">Open</div>
@@ -55,7 +55,7 @@
 				<router-link
 					v-if="data.automation && data.automation.open"
 					:to="{ name: 'automation' }"
-					class="ts-panel ts-stat ts-stat--link"
+					class="ts-strip__cell ts-stat"
 					:class="{ 'ts-stat--alert': data.automation.unassigned_urgent > 0 }"
 				>
 					<div class="ts-stat__value">{{ data.automation.urgent.toLocaleString() }}</div>
@@ -69,7 +69,7 @@
 
 				<router-link
 					:to="{ name: 'queue', query: { with: 'me' } }"
-					class="ts-panel ts-stat ts-stat--link"
+					class="ts-strip__cell ts-stat"
 				>
 					<div class="ts-stat__value">{{ data.mine.total }}</div>
 					<div class="ts-stat__label">Assigned to you</div>
@@ -81,7 +81,7 @@
 
 				<router-link
 					:to="{ name: 'queue', query: { stale: '1' } }"
-					class="ts-panel ts-stat ts-stat--link"
+					class="ts-strip__cell ts-stat"
 					:class="{ 'ts-stat--alert': data.due_a_look.total > 0 }"
 				>
 					<div class="ts-stat__value">{{ data.due_a_look.total }}</div>
@@ -94,14 +94,14 @@
 
 				<router-link
 					:to="{ name: 'sanctions', query: { scope: 'broken' } }"
-					class="ts-panel ts-stat ts-stat--link"
+					class="ts-strip__cell ts-stat"
 					:class="{ 'ts-stat--alert': data.attention.total > 0 }"
 				>
 					<div class="ts-stat__value">{{ data.attention.total }}</div>
 					<div class="ts-stat__label">Needs attention</div>
 					<div class="ts-stat__detail">{{ attentionDetail }}</div>
 				</router-link>
-			</div>
+			</nav>
 
 			<div v-if="warnings.length" class="ts-stack ts-section">
 				<cdx-message

@@ -50,6 +50,7 @@ class AutomatedReview extends Model
         'bucket',
         'staff_bucket',
         'confidence',
+        'headline',
         'page_summary',
         'change_summary',
         'reason',

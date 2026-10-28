@@ -52,6 +52,7 @@ class AutoReviewTest extends TestCase
                     'choices' => [['message' => ['content' => "```json\n".json_encode([
                         'bucket' => $this->verdict,
                         'confidence' => 0.9,
+                        'headline' => 'Adds battle lore to a fiction page.',
                         'page_summary' => 'A fan wiki page about a fictional war.',
                         'change_summary' => 'Adds a paragraph of battle lore.',
                         'reason' => 'In-universe fiction that tripped a violence keyword.',
@@ -159,6 +160,7 @@ class AutoReviewTest extends TestCase
 
         $this->assertSame(AutomatedReview::STATE_DONE, $review->state);
         $this->assertSame('urgent', $review->bucket);
+        $this->assertSame('Adds battle lore to a fiction page', $review->headline);
         $this->assertSame(['fiction', 'on-topic'], $review->signals);
         $this->assertSame('diff', $review->evidence_source);
         $this->assertTrue($review->evidence['reverted']);
@@ -363,6 +365,21 @@ class AutoReviewTest extends TestCase
 
         $this->expectException(ClassificationFailed::class);
         $classifier->parse('{"bucket":"maybe"}');
+    }
+
+    #[Test]
+    public function the_headline_is_one_short_line_and_falls_back_to_what_changed(): void
+    {
+        $classifier = app(Classifier::class);
+
+        $given = $classifier->parse('{"bucket":"review","headline":"  Posts a home\naddress on a talk page.  "}');
+        $this->assertSame('Posts a home address on a talk page', $given['headline']);
+
+        $missing = $classifier->parse('{"bucket":"review","change_summary":"Replaces the help page with nonsense."}');
+        $this->assertSame('Replaces the help page with nonsense', $missing['headline']);
+
+        $long = $classifier->parse('{"bucket":"review","headline":"'.str_repeat('word ', 60).'"}');
+        $this->assertLessThanOrEqual(141, mb_strlen($long['headline']));
     }
 
     #[Test]

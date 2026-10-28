@@ -6,41 +6,28 @@
 		<template v-if="item">
 			<PageHeader :title="item.title" :subtitle="`Investigation · ${ item.reference }`">
 				<template #actions>
-					<StatusChip kind="investigation" :value="item.status" />
-					<StatusChip kind="priority" :value="item.priority" />
+					<template v-if="item.live">
+						<cdx-button action="destructive" @click="showIssue = true">
+							<cdx-icon :icon="cdxIconBlock" size="small" />
+							Take an action
+						</cdx-button>
+						<cdx-button action="progressive" weight="primary" @click="showConclude = true">
+							<cdx-icon :icon="cdxIconCheck" size="small" />
+							Conclude
+						</cdx-button>
+					</template>
+					<cdx-button v-else action="progressive" weight="primary" @click="reopen">Reopen</cdx-button>
 
-					<cdx-button
-						v-if="item.live"
-						action="destructive"
-						@click="showIssue = true"
+					<cdx-menu-button
+						v-model:selected="moreChoice"
+						:menu-items="moreMenu"
+						aria-label="More for this investigation"
+						@update:selected="onMore"
 					>
-						<cdx-icon :icon="cdxIconBlock" size="small" />
-						Take an action
-					</cdx-button>
-
-					<cdx-button
-						v-if="item.live"
-						action="destructive"
-						:disabled="!item.subjects.length"
-						@click="openBulk( 'action' )"
-					>
-						<cdx-icon :icon="cdxIconUserGroup" size="small" />
-						Act on several
-					</cdx-button>
-
-					<cdx-button v-if="item.live" action="progressive" @click="showConclude = true">
-						<cdx-icon :icon="cdxIconCheck" size="small" />
-						Conclude
-					</cdx-button>
-					<cdx-button v-else action="progressive" @click="reopen">Reopen</cdx-button>
+						<cdx-icon :icon="cdxIconEllipsis" />
+					</cdx-menu-button>
 				</template>
 			</PageHeader>
-
-			<cdx-message v-if="!item.live" type="notice" :allow-user-dismiss="false">
-				This file was {{ item.status === 'concluded' ? 'concluded' : 'closed' }}
-				{{ ago( item.closed ) }}<template v-if="item.closed_by"> by {{ item.closed_by }}</template>.
-				Actions cannot be taken under it until it is reopened.
-			</cdx-message>
 
 			<div class="ts-split">
 				<div>
@@ -54,104 +41,89 @@
 
 					<section v-if="item.findings" class="ts-section">
 						<h2 class="ts-section__title">What was concluded</h2>
-						<div class="ts-panel">
-							<div class="ts-inline">
-								<StatusChip v-if="item.outcome" kind="outcome" :value="item.outcome" />
+						<div class="ts-panel ts-stack">
+							<div v-if="item.outcome" class="ts-inline">
+								<StatusChip kind="outcome" :value="item.outcome" />
 							</div>
 							<RichText class="ts-prose" :text="item.findings" />
 						</div>
 					</section>
 
 					<section class="ts-section">
-						<ActivityFeed
-							kind="investigation"
-							:entries="timeline"
-							:loading="timelineLoading"
-							:item="item"
-							@changed="onTransacted"
-						/>
-					</section>
-
-					<section class="ts-section">
-						<ActivityComposer
-							:key="item.id"
-							kind="investigation"
-							:item="item"
-							:team="team"
-							@done="onTransacted"
-						/>
-					</section>
-
-					<section class="ts-section">
-						<h2 class="ts-section__title">Reports on this file</h2>
-						<div class="ts-panel ts-stack">
-							<p v-if="!item.cases.length" class="ts-meta">
-								Nothing has been attached.
+						<div class="ts-section-head">
+							<h2 class="ts-section__title">Actions taken</h2>
+							<cdx-button
+								v-if="item.live && item.subjects.length"
+								weight="quiet"
+								size="small"
+								@click="openBulk( 'action' )"
+							>
+								<cdx-icon :icon="cdxIconUserGroup" size="small" />
+								Act on several
+							</cdx-button>
+						</div>
+						<div class="ts-panel">
+							<p v-if="!item.sanctions.length" class="ts-meta">
+								Nothing has been done yet.
 							</p>
 
-							<div v-for="c in item.cases" :key="c.id" class="ts-row">
-								<div>
-									<router-link :to="{ name: 'case', params: { id: c.id } }" class="ts-mono">
-										{{ c.reference }}
-									</router-link>
-									<span class="ts-row__title">{{ c.subject }}</span>
-									<span v-if="c.anonymous" class="ts-meta"> · filed anonymously</span>
-								</div>
-								<div class="ts-inline">
-									<StatusChip kind="case" :value="c.status" />
-									<cdx-button
-										weight="quiet"
-										size="small"
-										aria-label="Take this report off the file"
-										@click="detach( c )"
-									>
-										<cdx-icon :icon="cdxIconClose" size="small" />
-									</cdx-button>
-								</div>
-							</div>
-
-							<cdx-field>
-								<template #label>Attach another report</template>
-								<template #description>By its reference. It moves to “being looked into”.</template>
-								<div class="ts-inline">
-									<cdx-text-input v-model="attachRef" placeholder="TS-2026-0481" />
-									<cdx-button :disabled="!attachRef.trim() || attaching" @click="attach">
-										Attach
-									</cdx-button>
-								</div>
-							</cdx-field>
+							<ul v-else class="ts-accounts">
+								<li v-for="s in item.sanctions" :key="s.id" class="ts-accounts__row">
+									<div class="ts-accounts__name">
+										<div>
+											<router-link :to="{ name: 'item', params: { reference: s.reference } }" class="ts-mono">
+												{{ s.reference }}
+											</router-link>
+											{{ s.label }}
+											<template v-if="s.subject_id">
+												·
+												<router-link :to="{ name: 'subject', params: { id: s.subject_id } }">
+													{{ s.account }}
+												</router-link>
+											</template>
+										</div>
+										<div v-if="s.prompted_by || ( s.pages && s.pages.length ) || ( s.wikis && s.wikis.length )" class="ts-meta">
+											<template v-if="s.pages && s.pages.length">{{ s.where }}</template>
+											<template v-else-if="s.wikis && s.wikis.length">{{ s.wikis.join( ', ' ) }}</template>
+											<template v-if="s.prompted_by"> · for <span class="ts-mono">{{ s.prompted_by }}</span></template>
+										</div>
+										<div v-if="s.push_error && s.push_state !== 'pushed'" class="ts-accounts__problem">
+											<cdx-icon :icon="cdxIconAlert" size="small" />
+											{{ s.push_error }}
+										</div>
+									</div>
+									<span class="ts-accounts__chips">
+										<StatusChip kind="force" :value="s.active ? 'in-force' : 'lifted'" />
+										<StatusChip v-if="s.push_state !== 'pushed'" kind="push" :value="s.push_state" />
+									</span>
+								</li>
+							</ul>
 						</div>
 					</section>
 
 					<section id="pages" ref="pagesSection" class="ts-section">
-						<h2 class="ts-section__title">Pages on this file</h2>
-						<div class="ts-panel ts-stack">
-							<p class="ts-meta">
-								Pages come from the reports on this file, or are added here. Deleting pages
-								happens only from this list; their editors are looked up on the wiki so the
-								right people are told.
-							</p>
-
-							<div class="ts-inline">
-								<cdx-button @click="showAddPages = true">
+						<div class="ts-section-head">
+							<h2 class="ts-section__title">Pages</h2>
+							<span class="ts-inline">
+								<cdx-button
+									v-if="pages.length"
+									weight="quiet"
+									size="small"
+									:disabled="refreshingPages"
+									@click="refreshPages"
+								>
+									{{ refreshingPages ? 'Looking up…' : ( pagesPicked.length ? `Look up ${ pagesPicked.length } again` : 'Look up editors again' ) }}
+								</cdx-button>
+								<cdx-button weight="quiet" size="small" @click="showAddPages = true">
 									<cdx-icon :icon="cdxIconAdd" size="small" />
 									Add pages
 								</cdx-button>
-								<cdx-button weight="quiet" :disabled="!pages.length || refreshingPages" @click="refreshPages">
-									{{ refreshingPages ? 'Looking up…' : ( pagesPicked.length ? `Look up ${ pagesPicked.length } again` : 'Look up editors again' ) }}
-								</cdx-button>
-								<cdx-button
-									v-if="item.live"
-									action="destructive"
-									:disabled="!pagesPicked.length"
-									@click="showDeletePages = true"
-								>
-									<cdx-icon :icon="cdxIconTrash" size="small" />
-									Delete {{ pagesPicked.length || '' }} picked and tell their editors
-								</cdx-button>
-							</div>
-
-							<p v-if="!pages.length" class="ts-meta">No pages are on this file yet.</p>
+							</span>
+						</div>
+						<div class="ts-panel ts-stack">
+							<p v-if="!pages.length" class="ts-meta">
+								None yet. Pages named in the reports land here, and are only deleted from here so their editors are told.
+							</p>
 
 							<template v-else>
 								<div class="ts-bulk-table__head">
@@ -160,14 +132,25 @@
 										{{ pages.filter( ( p ) => p.deleted ).length }} deleted<template v-if="lookingUp"> ·
 											looking up {{ lookingUp }}…</template>
 									</span>
-									<cdx-button
-										weight="quiet"
-										size="small"
-										:disabled="!livePages.length || !item.live"
-										@click="pickAllPages"
-									>
-										{{ pagesPicked.length === livePages.length && livePages.length ? 'Pick none' : 'Pick all still up' }}
-									</cdx-button>
+									<span class="ts-inline">
+										<cdx-button
+											weight="quiet"
+											size="small"
+											:disabled="!livePages.length || !item.live"
+											@click="pickAllPages"
+										>
+											{{ pagesPicked.length === livePages.length && livePages.length ? 'Pick none' : 'Pick all still up' }}
+										</cdx-button>
+										<cdx-button
+											v-if="item.live && pagesPicked.length"
+											action="destructive"
+											size="small"
+											@click="showDeletePages = true"
+										>
+											<cdx-icon :icon="cdxIconTrash" size="small" />
+											Delete {{ pagesPicked.length }} and tell their editors
+										</cdx-button>
+									</span>
 								</div>
 
 								<div class="ts-bulk-table ts-scroll">
@@ -247,162 +230,151 @@
 						</div>
 					</section>
 
-					<section class="ts-section">
-						<h2 class="ts-section__title">Actions taken under this file</h2>
-						<div class="ts-panel ts-stack">
-							<p v-if="!item.sanctions.length" class="ts-meta">
-								Nothing has been done yet.
-							</p>
-
-							<div v-if="item.live" class="ts-inline">
-								<cdx-button action="destructive" @click="showIssue = true">
-									Take an action
-								</cdx-button>
-								<cdx-button
-									action="destructive"
-									:disabled="!item.subjects.length"
-									@click="openBulk( 'action' )"
-								>
-									<cdx-icon :icon="cdxIconUserGroup" size="small" />
-									Act on several at once
-								</cdx-button>
-							</div>
-
-							<div v-for="s in item.sanctions" :key="s.id" class="ts-row">
-								<div>
-									<span class="ts-mono">{{ s.reference }}</span>
-									<span class="ts-row__title">{{ s.label }}</span>
-									<span v-if="s.prompted_by" class="ts-meta"> · for <span class="ts-mono">{{ s.prompted_by }}</span></span>
-									<span v-if="s.subject_id" class="ts-meta">
-										· <router-link :to="{ name: 'subject', params: { id: s.subject_id } }">
-											{{ s.account }}
-										</router-link>
+					<section v-if="item.removals.length" class="ts-section">
+						<h2 class="ts-section__title">Erasures</h2>
+						<div class="ts-panel">
+							<ul class="ts-accounts">
+								<li v-for="r in item.removals" :key="r.id" class="ts-accounts__row">
+									<span class="ts-accounts__name">
+										<router-link :to="{ name: 'data-removals' }" class="ts-mono">{{ r.reference }}</router-link>
+										{{ r.account }}
 									</span>
-									<div v-if="s.pages && s.pages.length" class="ts-meta">
-										{{ s.where }}
-									</div>
-									<div v-else-if="s.wikis && s.wikis.length" class="ts-meta">
-										{{ s.wikis.join( ', ' ) }}
-									</div>
-								</div>
-								<div class="ts-inline">
-									<cdx-info-chip :status="s.active ? 'error' : 'notice'">
-										{{ s.active ? 'In force' : 'Not in force' }}
-									</cdx-info-chip>
-									<StatusChip kind="push" :value="s.push_state" />
-								</div>
-							</div>
-
-							<cdx-message
-								v-for="s in unenforced"
-								:key="`warn-${ s.id }`"
-								:type="s.push_state === 'manual' ? 'warning' : 'error'"
-								:inline="true"
-								:allow-user-dismiss="false"
-							>
-								<span class="ts-mono">{{ s.reference }}</span>: {{ s.push_error }}
-							</cdx-message>
+									<StatusChip kind="removal" :value="r.state" />
+								</li>
+							</ul>
 						</div>
 					</section>
 
 					<section class="ts-section">
-						<h2 class="ts-section__title">Erasures</h2>
-						<div class="ts-panel ts-stack">
-							<p v-if="!item.removals.length" class="ts-meta">
-								Nothing has been erased under this file. Erasing an account's personal
-								data cannot be undone.
-							</p>
+						<ActivityFeed
+							kind="investigation"
+							:entries="timeline"
+							:loading="timelineLoading"
+							:item="item"
+							@changed="onTransacted"
+						/>
+					</section>
 
-							<div v-for="r in item.removals" :key="r.id" class="ts-row">
-								<div>
-									<router-link :to="{ name: 'data-removals' }" class="ts-mono">{{ r.reference }}</router-link>
-									<span class="ts-row__title">{{ r.account }}</span>
-								</div>
-								<StatusChip kind="removal" :value="r.state" />
-							</div>
-
-							<cdx-button
-								v-if="item.live"
-								action="destructive"
-								:disabled="!item.subjects.length"
-								@click="openBulk( 'erasure' )"
-							>
-								<cdx-icon :icon="cdxIconTrash" size="small" />
-								Erase accounts on this file
-							</cdx-button>
-						</div>
+					<section class="ts-section">
+						<ActivityComposer
+							:key="item.id"
+							kind="investigation"
+							:item="item"
+							:team="team"
+							@done="onTransacted"
+						/>
 					</section>
 				</div>
 
-				<aside class="ts-stack">
-					<div class="ts-panel ts-stack">
+				<aside class="ts-stack ts-case-aside">
+					<div class="ts-panel">
 						<h2 class="ts-section__title">Handling</h2>
-						<p class="ts-meta">Change these with <strong>Add action</strong> under the file.</p>
-
 						<dl class="ts-dl">
 							<dt>State</dt>
-							<dd><StatusChip kind="investigation" :value="item.status" /></dd>
+							<dd>
+								<StatusChip kind="investigation" :value="item.status" />
+								<div v-if="!item.live" class="ts-meta">
+									{{ ago( item.closed ) }}<template v-if="item.closed_by"> by {{ item.closed_by }}</template>
+									· reopen to take actions
+								</div>
+							</dd>
 							<dt>With</dt>
 							<dd>{{ item.assignee ? item.assignee.username : 'Nobody' }}</dd>
 							<dt>Priority</dt>
 							<dd><StatusChip kind="priority" :value="item.priority" /></dd>
-							<dt>Look again on</dt>
+							<dt>Look again</dt>
 							<dd>{{ item.review_at ? dateTime( item.review_at ).replace( /,? \d{1,2}:\d{2}.*$/, '' ) : 'Not set' }}</dd>
 							<dt>Opened</dt>
 							<dd>{{ dateTime( item.opened ) }}<template v-if="item.opened_by"> by {{ item.opened_by }}</template></dd>
-							<dt>Last change</dt>
-							<dd>{{ ago( item.updated ) }}</dd>
 						</dl>
+						<p class="ts-meta ts-case-aside__foot">
+							Updated {{ ago( item.updated ) }} · change these with <strong>Add action</strong>
+						</p>
 					</div>
 
-					<div class="ts-panel ts-stack">
-						<h2 class="ts-section__title">Accounts on the file</h2>
+					<div class="ts-panel">
+						<h2 class="ts-section__title">Reports</h2>
+						<ul v-if="item.cases.length" class="ts-accounts">
+							<li v-for="c in item.cases" :key="c.id" class="ts-accounts__row ts-accounts__row--removable">
+								<div class="ts-accounts__name">
+									<router-link :to="{ name: 'case', params: { id: c.id } }" class="ts-mono">
+										{{ c.reference }}
+									</router-link>
+									<div class="ts-meta">
+										{{ c.subject }}<template v-if="c.anonymous"> · anonymous</template>
+									</div>
+								</div>
+								<span class="ts-accounts__chips">
+									<StatusChip kind="case" :value="c.status" />
+									<cdx-button
+										weight="quiet"
+										size="small"
+										class="ts-accounts__remove"
+										:aria-label="`Take ${ c.reference } off the file`"
+										@click="detach( c )"
+									>
+										<cdx-icon :icon="cdxIconClose" size="small" />
+									</cdx-button>
+								</span>
+							</li>
+						</ul>
+						<p v-else class="ts-meta">Nothing attached yet.</p>
 
-						<p v-if="!item.subjects.length" class="ts-meta">Nobody is named yet.</p>
+						<form class="ts-accounts__add" @submit.prevent="attach">
+							<cdx-text-input
+								v-model="attachRef"
+								placeholder="Attach by reference"
+								aria-label="Attach a report by its reference"
+							/>
+							<cdx-button type="submit" :disabled="!attachRef.trim() || attaching">Attach</cdx-button>
+						</form>
+					</div>
 
-						<div v-for="s in item.subjects" :key="s.id" class="ts-row">
-							<div>
-								<router-link :to="{ name: 'subject', params: { id: s.id } }">
-									{{ s.username }}
-								</router-link>
-								<div class="ts-inline">
+					<div class="ts-panel">
+						<h2 class="ts-section__title">Accounts</h2>
+
+						<ul v-if="item.subjects.length" class="ts-accounts">
+							<li v-for="s in item.subjects" :key="s.id" class="ts-accounts__row ts-accounts__row--removable">
+								<div class="ts-accounts__name">
+									<router-link :to="{ name: 'subject', params: { id: s.id } }">
+										{{ s.username }}
+									</router-link>
+									<div v-if="s.unresolved" class="ts-meta">Not found on the farm</div>
+								</div>
+								<span class="ts-accounts__chips">
 									<StatusChip kind="role" :value="s.role" />
 									<StatusChip kind="standing" :value="s.standing" />
-								</div>
-								<div v-if="s.unresolved" class="ts-meta">
-									No matching account on the farm
-								</div>
-							</div>
-							<cdx-button
-								weight="quiet"
-								size="small"
-								:aria-label="`Take ${ s.username } off the file`"
-								@click="removeSubject( s )"
-							>
-								<cdx-icon :icon="cdxIconClose" size="small" />
-							</cdx-button>
-						</div>
+									<cdx-button
+										weight="quiet"
+										size="small"
+										class="ts-accounts__remove"
+										:aria-label="`Take ${ s.username } off the file`"
+										@click="removeSubject( s )"
+									>
+										<cdx-icon :icon="cdxIconClose" size="small" />
+									</cdx-button>
+								</span>
+							</li>
+						</ul>
+						<p v-else class="ts-meta">Nobody is named yet.</p>
 
-						<cdx-field>
-							<template #label>Name another account</template>
-							<template #description>
-								It does not have to be an account the portal knows, or an account at all.
-							</template>
-							<cdx-text-input v-model="newSubject.username" placeholder="Quiet Marlin" />
-						</cdx-field>
-						<div class="ts-inline">
-							<cdx-select v-model:selected="newSubject.role" :menu-items="roleOptions" />
-							<cdx-button
-								:disabled="!newSubject.username.trim() || addingSubject"
-								@click="addSubject"
-							>
-								Add
-							</cdx-button>
-							<cdx-button @click="showAddSubjects = true">
-								<cdx-icon :icon="cdxIconUserAdd" size="small" />
-								Paste a list
-							</cdx-button>
-						</div>
+						<form class="ts-accounts__add ts-accounts__add--stacked" @submit.prevent="addSubject">
+							<cdx-text-input
+								v-model="newSubject.username"
+								placeholder="Add an account"
+								aria-label="Name another account"
+							/>
+							<cdx-select
+								v-model:selected="newSubject.role"
+								:menu-items="roleOptions"
+								aria-label="Their role"
+							/>
+							<cdx-button type="submit" :disabled="!newSubject.username.trim() || addingSubject">Add</cdx-button>
+						</form>
+						<cdx-button weight="quiet" size="small" class="ts-accounts__paste" @click="showAddSubjects = true">
+							<cdx-icon :icon="cdxIconUserAdd" size="small" />
+							Paste a list
+						</cdx-button>
 					</div>
 				</aside>
 			</div>
@@ -452,10 +424,8 @@
 			>
 				<div class="ts-stack">
 					<cdx-message v-if="openCases.length" type="notice" :allow-user-dismiss="false">
-						<template>
-							This will close {{ openCases.length }} open report{{ openCases.length === 1 ? '' : 's' }}
-							({{ openCases.map( ( c ) => c.reference ).join( ', ' ) }}).
-						</template>
+						This will close {{ openCases.length }} open report{{ openCases.length === 1 ? '' : 's' }}
+						({{ openCases.map( ( c ) => c.reference ).join( ', ' ) }}).
 					</cdx-message>
 
 					<cdx-field>
@@ -478,11 +448,12 @@
 import { computed, inject, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import {
-	CdxButton, CdxCheckbox, CdxDialog, CdxField, CdxIcon, CdxInfoChip,
-	CdxMessage, CdxProgressBar, CdxSelect, CdxTextArea, CdxTextInput
+	CdxButton, CdxCheckbox, CdxDialog, CdxField, CdxIcon, CdxMenuButton,
+	CdxMessage, CdxProgressBar, CdxSelect, CdxTextInput
 } from '@wikimedia/codex';
 import {
-	cdxIconAdd, cdxIconBlock, cdxIconCheck, cdxIconClose, cdxIconTrash, cdxIconUserAdd, cdxIconUserGroup
+	cdxIconAdd, cdxIconAlert, cdxIconBlock, cdxIconCheck, cdxIconClose, cdxIconEllipsis, cdxIconTrash,
+	cdxIconUserAdd, cdxIconUserGroup
 } from '@wikimedia/codex-icons';
 import PageHeader from '../components/PageHeader.vue';
 import LoadError from '../components/LoadError.vue';
@@ -531,6 +502,7 @@ const pagesPicked = ref( [] );
 const refreshingPages = ref( false );
 const pagesSection = ref( null );
 const showConclude = ref( false );
+const moreChoice = ref( null );
 const conclusion = reactive( {
 	outcome: null,
 	findings: ''
@@ -545,9 +517,30 @@ const openCases = computed( () => (
 	( item.value?.cases ?? [] ).filter( ( c ) => [ 'received', 'in-review', 'investigating' ].includes( c.status ) )
 ) );
 
-const unenforced = computed( () => (
-	( item.value?.sanctions ?? [] ).filter( ( s ) => s.push_error && s.push_state !== 'pushed' )
-) );
+const moreMenu = computed( () => {
+	const data = item.value;
+	if ( !data ) {
+		return [];
+	}
+	const items = [];
+	items.push( { value: 'pages', label: 'Add pages…', icon: cdxIconAdd } );
+	items.push( { value: 'accounts', label: 'Paste a list of accounts…', icon: cdxIconUserAdd } );
+	if ( data.live ) {
+		items.push( { value: 'erase', label: 'Erase accounts on this file…', icon: cdxIconTrash, action: 'destructive', disabled: !data.subjects.length } );
+	}
+	return items;
+} );
+
+function onMore( value ) {
+	moreChoice.value = null;
+	if ( value === 'erase' ) {
+		openBulk( 'erasure' );
+	} else if ( value === 'pages' ) {
+		showAddPages.value = true;
+	} else if ( value === 'accounts' ) {
+		showAddSubjects.value = true;
+	}
+}
 
 const actionable = computed( () => item.value?.subjects ?? [] );
 
