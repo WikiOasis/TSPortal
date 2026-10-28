@@ -4332,3 +4332,99 @@ tr:hover .ts-chip-select .cdx-select-vue__handle {
 .ts-accounts__row > .ts-accounts__name {
 	flex: 1 1 auto;
 }
+
+.ts-dash {
+	&__strip {
+		margin-top: 0;
+
+		.ts-strip__cell {
+			gap: @spacing-25;
+			padding: @spacing-100;
+		}
+
+		.ts-stat__label {
+			font-weight: @font-weight-bold;
+		}
+	}
+
+	&__warnings {
+		margin-bottom: @spacing-100;
+	}
+
+	.ts-section-head {
+		margin: @spacing-75 0;
+
+		.ts-section__title {
+			margin: 0;
+		}
+	}
+
+	&__more {
+		font-size: @font-size-small;
+	}
+
+	&__table {
+		padding: 0;
+
+		.cdx-table {
+			border: 0;
+		}
+	}
+
+	&__about {
+		overflow-wrap: anywhere;
+	}
+
+	&__aside {
+		display: flex;
+		flex-direction: column;
+		gap: @spacing-50;
+		min-width: 0;
+	}
+
+	&__empty {
+		margin: 0;
+	}
+
+	&__list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+
+		> li + li {
+			border-top: @border-width-base @border-style-base @border-color-subtle;
+			margin-top: @spacing-50;
+			padding-top: @spacing-50;
+		}
+	}
+
+	&__item {
+		display: flex;
+		flex-direction: column;
+		gap: @spacing-12;
+		color: inherit;
+
+		&:hover {
+			text-decoration: none;
+
+			.ts-dash__item-title {
+				color: @color-progressive;
+				text-decoration: underline;
+			}
+		}
+	}
+
+	&__item-title {
+		font-weight: @font-weight-semi-bold;
+		overflow-wrap: anywhere;
+	}
+
+	&__verb {
+		color: @color-subtle;
+	}
+
+	&__activity {
+		max-height: 28rem;
+		overflow-y: auto;
+	}
+}

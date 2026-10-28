@@ -126,6 +126,7 @@ class CaseController extends Controller
             'attachments',
             'sanctionsIssued',
             'comments' => fn ($q) => $q->orderBy('created_at'),
+            'comments.author',
         ]);
 
         if ($case->isAppeal()) {
@@ -336,7 +337,8 @@ class CaseController extends Controller
 
         return response()->json([
             'id' => $comment->id,
-            'author' => $comment->author_label,
+            'author' => $request->user()->username,
+            'public_author' => $comment->author_label,
             'author_type' => $comment->author_type,
             'body' => $comment->body,
             'visibility' => $comment->visibility,

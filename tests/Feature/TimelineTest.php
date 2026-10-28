@@ -154,6 +154,25 @@ class TimelineTest extends TestCase
     }
 
     #[Test]
+    public function staff_are_named_internally_but_the_reporter_sees_trust_and_safety(): void
+    {
+        $case = SafetyCase::create([
+            'reference' => SafetyCase::nextReference('A report'),
+            'type' => SafetyCase::TYPE_REPORT,
+            'subject_line' => 'A report',
+        ]);
+
+        $comment = app(CaseService::class)->comment($case, 'We are looking.', CaseComment::VISIBILITY_PUBLIC, $this->staff());
+
+        $reply = collect(app(Timeline::class)->forCase($case->refresh()))
+            ->firstWhere('body', 'We are looking.');
+
+        $this->assertSame('Admin', $reply['actor']);
+        $this->assertSame('Trust & Safety', $reply['public_actor']);
+        $this->assertSame('Trust & Safety', $comment->author_label);
+    }
+
+    #[Test]
     public function nothing_appears_twice(): void
     {
         $case = SafetyCase::create([

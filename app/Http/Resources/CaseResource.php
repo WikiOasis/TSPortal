@@ -171,7 +171,8 @@ class CaseResource extends JsonResource
             'comments' => $this->whenLoaded('comments', fn () => $this->comments->map(fn (CaseComment $c) => [
                 'id' => $c->id,
                 'author_type' => $c->author_type,
-                'author' => $c->author_label,
+                'author' => $c->author?->username ?? $c->author_label,
+                'public_author' => $c->author_label,
                 'body' => $c->body,
                 'visibility' => $c->visibility,
                 'reply_to' => $c->reply_to_id,

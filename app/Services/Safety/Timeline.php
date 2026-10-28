@@ -218,12 +218,17 @@ final class Timeline
     {
         $system = $comment->author_type === CaseComment::AUTHOR_SYSTEM;
 
+        $publicActor = $comment->author_type === CaseComment::AUTHOR_STAFF
+            ? ($comment->author_label ?? 'Trust & Safety')
+            : null;
+
         if ($comment->kind === CaseComment::KIND_STATUS) {
             return [
                 'at' => $comment->created_at?->toIso8601String(),
                 'kind' => 'status-note',
                 'subkind' => $comment->author_type,
                 'actor' => $comment->author?->username ?? $comment->author_label,
+                'public_actor' => $publicActor,
                 'actor_id' => $comment->author_user_id,
                 'title' => $comment->isPublic() ? 'Told the reporter' : 'Recorded',
                 'body' => $comment->body,
@@ -236,7 +241,8 @@ final class Timeline
             'at' => $comment->created_at?->toIso8601String(),
             'kind' => $system ? 'system' : 'comment',
             'subkind' => $comment->author_type,
-            'actor' => $comment->author_label ?? ($system ? 'The portal' : null),
+            'actor' => $comment->author?->username ?? $comment->author_label ?? ($system ? 'The portal' : null),
+            'public_actor' => $publicActor,
             'title' => match ($comment->author_type) {
                 CaseComment::AUTHOR_SUBJECT => 'The reporter wrote',
                 CaseComment::AUTHOR_STAFF => $comment->isPublic() ? 'Replied to the reporter' : 'Internal note',

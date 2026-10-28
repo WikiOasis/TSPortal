@@ -14,6 +14,7 @@ use App\Models\SafetyCase;
 use App\Models\Sanction;
 use App\Services\AutoReview\AutoReview;
 use App\Services\MediaWiki\WikiClient;
+use App\Services\Safety\Timeline;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -155,7 +156,7 @@ class DashboardController extends Controller
      */
     private function activity(): array
     {
-        $logs = AuditLog::query()->with('user')->orderByDesc('id')->limit(12)->get();
+        $logs = AuditLog::query()->with('user')->orderByDesc('id')->limit(10)->get();
 
         $objects = PortalObject::query()
             ->whereIn('object_type', $logs->pluck('target_type')->filter()->unique())
@@ -168,6 +169,7 @@ class DashboardController extends Controller
 
             return [
                 'action' => $l->action,
+                'label' => Timeline::titleFor($l),
                 'actor' => $l->user?->username ?? $l->actor_label ?? 'system',
                 'reference' => $object?->reference,
                 'target_label' => $object?->typeLabel(),

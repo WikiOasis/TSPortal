@@ -1,11 +1,8 @@
 <template>
-	<main class="ts-page">
-		<PageHeader
-			title="Dashboard"
-			:subtitle="`Welcome back, ${ session.user.username }. `"
-		>
+	<main class="ts-page ts-dash">
+		<PageHeader :title="greeting" :subtitle="summary">
 			<template #actions>
-				<cdx-button @click="load">
+				<cdx-button :disabled="loading" @click="load">
 					<cdx-icon :icon="cdxIconReload" size="small" />
 					Refresh
 				</cdx-button>
@@ -26,99 +23,47 @@
 				<div class="ts-stat__label">
 					Open threat-to-life report{{ data.threat_to_life.open === 1 ? '' : 's' }}
 				</div>
-				<div class="ts-stat__detail">
-					<template v-if="data.threat_to_life.unassigned">
-						{{ data.threat_to_life.unassigned }} have nobody assigned to {{ data.threat_to_life.unassigned === 1 ? 'it' : 'them' }}
-					</template>
+				<div v-if="data.threat_to_life.unassigned" class="ts-stat__detail">
+					{{ data.threat_to_life.unassigned }} with nobody assigned
 				</div>
 			</router-link>
 
-			<nav class="ts-strip" aria-label="At a glance">
+			<nav class="ts-strip ts-dash__strip" aria-label="At a glance">
 				<router-link
-					:to="{ name: 'queue' }"
+					v-for="tile in tiles"
+					:key="tile.key"
+					:to="tile.to"
 					class="ts-strip__cell ts-stat"
+					:class="{
+						'ts-stat--alert': tile.alert,
+						'ts-strip__cell--empty': !tile.value
+					}"
 				>
-					<div class="ts-stat__value">{{ data.open_items.total }}</div>
-					<div class="ts-stat__label">Open</div>
-					<div class="ts-stat__detail">
-						{{ data.open_items.cases }} in queue ·
-						{{ data.open_items.investigations }} investigation{{ data.open_items.investigations === 1 ? '' : 's' }}
-						<template v-if="data.open_items.unassigned">
-							· {{ data.open_items.unassigned }} unassigned
-						</template>
-						<template v-if="data.open_items.automated">
-							· {{ data.open_items.automated }} automated
-						</template>
-					</div>
-				</router-link>
-
-				<router-link
-					v-if="data.automation && data.automation.open"
-					:to="{ name: 'automation' }"
-					class="ts-strip__cell ts-stat"
-					:class="{ 'ts-stat--alert': data.automation.unassigned_urgent > 0 }"
-				>
-					<div class="ts-stat__value">{{ data.automation.urgent.toLocaleString() }}</div>
-					<div class="ts-stat__label">Automated reports need a review</div>
-					<div class="ts-stat__detail">
-						{{ data.automation.review.toLocaleString() }} need review ·
-						{{ data.automation.unlikely.toLocaleString() }} unlikely
-						<template v-if="data.automation.waiting"> · {{ data.automation.waiting.toLocaleString() }} not sorted yet</template>
-					</div>
-				</router-link>
-
-				<router-link
-					:to="{ name: 'queue', query: { with: 'me' } }"
-					class="ts-strip__cell ts-stat"
-				>
-					<div class="ts-stat__value">{{ data.mine.total }}</div>
-					<div class="ts-stat__label">Assigned to you</div>
-					<div class="ts-stat__detail">
-						{{ data.mine.cases }} case{{ data.mine.cases === 1 ? '' : 's' }} ·
-						{{ data.mine.investigations }} file{{ data.mine.investigations === 1 ? '' : 's' }}
-					</div>
-				</router-link>
-
-				<router-link
-					:to="{ name: 'queue', query: { stale: '1' } }"
-					class="ts-strip__cell ts-stat"
-					:class="{ 'ts-stat--alert': data.due_a_look.total > 0 }"
-				>
-					<div class="ts-stat__value">{{ data.due_a_look.total }}</div>
-					<div class="ts-stat__label">Due a look</div>
-					<div class="ts-stat__detail">
-						{{ data.due_a_look.stale_cases }} stale for a fortnight ·
-						{{ data.due_a_look.overdue_files }} overdue
-					</div>
-				</router-link>
-
-				<router-link
-					:to="{ name: 'sanctions', query: { scope: 'broken' } }"
-					class="ts-strip__cell ts-stat"
-					:class="{ 'ts-stat--alert': data.attention.total > 0 }"
-				>
-					<div class="ts-stat__value">{{ data.attention.total }}</div>
-					<div class="ts-stat__label">Needs attention</div>
-					<div class="ts-stat__detail">{{ attentionDetail }}</div>
+					<div class="ts-stat__label">{{ tile.label }}</div>
+					<div class="ts-stat__value">{{ tile.value.toLocaleString() }}</div>
+					<div class="ts-stat__detail">{{ tile.detail }}</div>
 				</router-link>
 			</nav>
 
-			<div v-if="warnings.length" class="ts-stack ts-section">
+			<div v-if="warnings.length" class="ts-stack ts-dash__warnings">
 				<cdx-message
 					v-for="warning in warnings"
 					:key="warning.text"
 					:type="warning.type"
 					:allow-user-dismiss="false"
 				>
-					<span>{{ warning.text }}</span>
+					{{ warning.text }}
 					<router-link v-if="warning.to" :to="warning.to">{{ warning.link }}</router-link>
 				</cdx-message>
 			</div>
 
 			<div class="ts-split ts-section">
-				<section>
-					<h2 class="ts-section__title">Just in from people</h2>
-					<div class="ts-panel ts-scroll">
+				<section aria-labelledby="dash-recent">
+					<div class="ts-section-head">
+						<h2 id="dash-recent" class="ts-section__title">Latest reports</h2>
+						<router-link :to="{ name: 'queue' }" class="ts-dash__more">Open the queue</router-link>
+					</div>
+					<div class="ts-panel ts-scroll ts-dash__table">
 						<cdx-table
 							caption="Most recent submissions"
 							:hide-caption="true"
@@ -130,55 +75,84 @@
 									{{ row.reference }}
 								</router-link>
 							</template>
-							<template #item-type="{ item }">{{ TYPE_LABELS[ item ] ?? item }}</template>
+							<template #item-subject="{ row }">
+								<div class="ts-dash__about">{{ row.subject || TYPE_LABELS[ row.type ] || row.type }}</div>
+								<div class="ts-meta">
+									{{ TYPE_LABELS[ row.type ] ?? row.type }} · {{ row.reporter || 'anonymous' }}
+								</div>
+							</template>
 							<template #item-status="{ item }">
 								<StatusChip kind="case" :value="item" />
 							</template>
-							<template #item-filed="{ item }">{{ ago( item ) }}</template>
+							<template #item-filed="{ item }">
+								<time class="ts-meta" :datetime="item">{{ ago( item ) }}</time>
+							</template>
 							<template #empty-state>Nothing has come in yet.</template>
 						</cdx-table>
 					</div>
 				</section>
 
-				<section>
-					<h2 class="ts-section__title">Due a second look</h2>
-					<div class="ts-panel ts-stack">
-						<p v-if="!data.reviews.length" class="ts-meta">
-							Nothing seems to need a second look right now. Enjoy the peace.
- 						</p>
-						<div v-for="r in data.reviews" :key="r.id" class="ts-row">
-							<div>
-								<router-link :to="{ name: 'investigation', params: { id: r.id } }" class="ts-mono">
-									{{ r.reference }}
-								</router-link>
-								<div class="ts-row__title">{{ r.title }}</div>
-							</div>
-							<span class="ts-meta">
-								{{ r.assignee || 'nobody' }} · due {{ ago( r.due ) }}
-							</span>
+				<aside class="ts-dash__aside">
+					<section aria-labelledby="dash-reviews">
+						<div class="ts-section-head">
+							<h2 id="dash-reviews" class="ts-section__title">Due a second look</h2>
+							<router-link
+								v-if="data.reviews.length"
+								:to="{ name: 'investigations' }"
+								class="ts-dash__more"
+							>
+								All files
+							</router-link>
 						</div>
-					</div>
+						<div class="ts-panel">
+							<p v-if="!data.reviews.length" class="ts-meta ts-dash__empty">
+								No investigation is waiting on a second look.
+							</p>
+							<ul v-else class="ts-dash__list">
+								<li v-for="r in data.reviews" :key="r.id">
+									<router-link :to="{ name: 'investigation', params: { id: r.id } }" class="ts-dash__item">
+										<span class="ts-dash__item-title">{{ r.title }}</span>
+										<span class="ts-meta">
+											<span class="ts-mono">{{ r.reference }}</span>
+											· {{ r.assignee || 'nobody assigned' }}
+											· due {{ ago( r.due ) }}
+										</span>
+									</router-link>
+								</li>
+							</ul>
+						</div>
+					</section>
 
-					<h2 class="ts-section__title ts-section">Recent activity</h2>
-					<div class="ts-panel ts-stack">
-						<p v-if="!data.activity.length" class="ts-meta">Nothing yet.</p>
-						<div v-for="( entry, i ) in data.activity" :key="i">
-							<div><strong>{{ entry.actor }}</strong> — {{ entry.action }}</div>
-							<div class="ts-meta">
-								<router-link
-									v-if="entry.reference && entry.route"
-									:to="{ name: entry.route, params: { id: entry.target_id } }"
-									class="ts-mono"
-								>
-									{{ entry.reference }}
-								</router-link>
-								<span v-else-if="entry.reference" class="ts-mono">{{ entry.reference }}</span>
-								<template v-if="entry.reference"> · </template>
-								{{ ago( entry.at ) }}
-							</div>
+					<section aria-labelledby="dash-activity">
+						<div class="ts-section-head">
+							<h2 id="dash-activity" class="ts-section__title">Recent activity</h2>
+							<router-link :to="{ name: 'audit' }" class="ts-dash__more">Audit log</router-link>
 						</div>
-					</div>
-				</section>
+						<div class="ts-panel">
+							<p v-if="!data.activity.length" class="ts-meta ts-dash__empty">Nothing has happened yet.</p>
+							<ol v-else class="ts-dash__list ts-dash__activity">
+								<li v-for="( entry, i ) in data.activity" :key="i">
+									<div>
+										<strong>{{ entry.actor }}</strong>
+										<span class="ts-dash__verb"> · {{ entry.label || entry.action }}</span>
+									</div>
+									<div class="ts-meta">
+										<router-link
+											v-if="entry.reference && entry.route"
+											:to="{ name: entry.route, params: { id: entry.target_id } }"
+											class="ts-mono"
+										>
+											{{ entry.reference }}
+										</router-link>
+										<span v-else-if="entry.reference" class="ts-mono">{{ entry.reference }}</span>
+										<template v-if="entry.reference"> · </template>
+										<time :datetime="entry.at" :title="dateTime( entry.at )">{{ ago( entry.at ) }}</time>
+									</div>
+								</li>
+							</ol>
+						</div>
+					</section>
+				</aside>
 			</div>
 		</template>
 	</main>
@@ -192,7 +166,7 @@ import PageHeader from '../components/PageHeader.vue';
 import LoadError from '../components/LoadError.vue';
 import StatusChip from '../components/StatusChip.vue';
 import { api } from '../lib/api.js';
-import { ago, TYPE_LABELS } from '../lib/format.js';
+import { ago, dateTime, TYPE_LABELS } from '../lib/format.js';
 import { session } from '../lib/session.js';
 
 const data = ref( null );
@@ -201,11 +175,92 @@ const error = ref( null );
 
 const recentColumns = [
 	{ id: 'reference', label: 'Ref', width: '8rem' },
-	{ id: 'type', label: 'Kind', width: '6rem' },
 	{ id: 'subject', label: 'About' },
-	{ id: 'status', label: 'Status', width: '10rem' },
+	{ id: 'status', label: 'Status', width: '9rem' },
 	{ id: 'filed', label: 'Filed', width: '7rem' }
 ];
+
+const plural = ( n, one, many = `${ one }s` ) => `${ n } ${ n === 1 ? one : many }`;
+
+const greeting = computed( () => {
+	const hour = new Date().getHours();
+	const part = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+	return `Good ${ part }, ${ session.user.username }`;
+} );
+
+const summary = computed( () => {
+	const d = data.value;
+	if ( !d ) {
+		return 'Here is where things stand.';
+	}
+	if ( !d.mine.total ) {
+		return 'Nothing is assigned to you right now.';
+	}
+	return `You have ${ plural( d.mine.total, 'open item' ) } assigned to you.`;
+} );
+
+const tiles = computed( () => {
+	const d = data.value;
+	if ( !d ) {
+		return [];
+	}
+
+	const open = [ plural( d.open_items.cases, 'case' ), plural( d.open_items.investigations, 'file' ) ];
+	if ( d.open_items.unassigned ) {
+		open.push( `${ d.open_items.unassigned } unassigned` );
+	}
+
+	const list = [
+		{
+			key: 'mine',
+			label: 'Assigned to you',
+			value: d.mine.total,
+			detail: `${ plural( d.mine.cases, 'case' ) } · ${ plural( d.mine.investigations, 'file' ) }`,
+			to: { name: 'queue', query: { with: 'me' } }
+		},
+		{
+			key: 'open',
+			label: 'Open',
+			value: d.open_items.total,
+			detail: open.join( ' · ' ),
+			to: { name: 'queue' }
+		},
+		{
+			key: 'due',
+			label: 'Due a look',
+			value: d.due_a_look.total,
+			alert: d.due_a_look.total > 0,
+			detail: `${ d.due_a_look.stale_cases } quiet for 14 days · ${ d.due_a_look.overdue_files } overdue`,
+			to: { name: 'queue', query: { stale: '1' } }
+		}
+	];
+
+	if ( d.automation && d.automation.open ) {
+		const auto = [ `${ d.automation.review.toLocaleString() } to review`, `${ d.automation.unlikely.toLocaleString() } unlikely` ];
+		if ( d.automation.waiting ) {
+			auto.push( `${ d.automation.waiting.toLocaleString() } unsorted` );
+		}
+		list.push( {
+			key: 'automation',
+			label: 'Automated, urgent',
+			value: d.automation.urgent,
+			alert: d.automation.unassigned_urgent > 0,
+			detail: auto.join( ' · ' ),
+			to: { name: 'automation' }
+		} );
+	}
+
+	list.push( {
+		key: 'attention',
+		label: 'Needs attention',
+		value: d.attention.total,
+		alert: d.attention.total > 0,
+		detail: attentionDetail.value,
+		to: { name: 'sanctions', query: { scope: 'broken' } }
+	} );
+
+	return list;
+} );
 
 const attentionDetail = computed( () => {
 	const a = data.value?.attention;

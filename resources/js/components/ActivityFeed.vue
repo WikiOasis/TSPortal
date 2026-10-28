@@ -28,7 +28,7 @@
 						</span>
 						<div class="ts-feed__event-main">
 							<div class="ts-feed__event-line">
-								<strong v-if="ev.actor && !( ev.kind === 'status-note' && i > 0 )" class="ts-feed__actor">{{ ev.actor }}</strong>
+								<strong v-if="ev.actor && !( ev.kind === 'status-note' && i > 0 )" class="ts-feed__actor">{{ actorOf( ev ) }}</strong>
 								<span>{{ sentence( ev ) }}</span>
 								<router-link v-if="link( ev )" :to="link( ev )" class="ts-mono">
 									{{ ev.meta.reference || 'open' }}
@@ -72,13 +72,18 @@
 						{ 'ts-msg--flash': flashed !== null && flashed === idOf( group.message ) }
 					]"
 				>
-					<span class="ts-msg__avatar" :style="{ '--hue': hue( group.message.actor ) }" aria-hidden="true">
-						{{ initials( group.message.actor ) }}
+					<span class="ts-msg__avatar" :style="{ '--hue': hue( actorOf( group.message ) ) }" aria-hidden="true">
+						{{ initials( actorOf( group.message ) ) }}
 					</span>
 
 					<div class="ts-msg__card">
 						<header class="ts-msg__head">
-							<strong class="ts-msg__author">{{ group.message.actor || 'Someone' }}</strong>
+							<strong
+								class="ts-msg__author"
+								:title="!publicOnly && group.message.public_actor && group.message.visibility === 'public'
+									? `The reporter sees this as from ${ group.message.public_actor }`
+									: undefined"
+							>{{ actorOf( group.message ) || 'Someone' }}</strong>
 							<span class="ts-msg__badge">
 								<cdx-icon v-if="role( group.message ) === 'internal'" :icon="cdxIconLock" size="x-small" />
 								<cdx-icon v-else-if="role( group.message ) === 'outgoing'" :icon="cdxIconEye" size="x-small" />
@@ -112,7 +117,7 @@
 							class="ts-msg__quoted"
 							@click="jump( group.message.reply_to )"
 						>
-							<span class="ts-msg__quoted-who">{{ byId[ group.message.reply_to ].actor }}</span>
+							<span class="ts-msg__quoted-who">{{ actorOf( byId[ group.message.reply_to ] ) }}</span>
 							{{ excerpt( byId[ group.message.reply_to ].body ) }}
 						</button>
 
@@ -178,6 +183,8 @@ const MESSAGES = {
 };
 const isMessage = ( e ) => MESSAGES[ props.kind ].includes( e.kind );
 const idOf = ( e ) => e.comment_id ?? e.note_id ?? null;
+
+const actorOf = ( e ) => ( publicOnly.value && e.public_actor ) ? e.public_actor : e.actor;
 
 const byId = computed( () => Object.fromEntries(
 	props.entries.filter( ( e ) => idOf( e ) ).map( ( e ) => [ idOf( e ), e ] )
@@ -342,7 +349,7 @@ function dateOnly( iso ) {
 function quoteOf( entry ) {
 	return {
 		id: idOf( entry ),
-		author: entry.actor,
+		author: actorOf( entry ),
 		excerpt: excerpt( entry.body ),
 		visibility: entry.visibility
 	};
