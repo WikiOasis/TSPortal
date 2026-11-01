@@ -32,9 +32,12 @@ class User extends Authenticatable
         'idp_groups',
         'active',
         'last_login_at',
+        'preferences',
+        'display_name',
+        'bio',
     ];
 
-    protected $hidden = ['remember_token'];
+    protected $hidden = ['remember_token', 'avatar_path'];
 
     protected $attributes = [
         'active' => true,
@@ -50,8 +53,47 @@ class User extends Authenticatable
             'idp_groups' => 'array',
             'active' => 'boolean',
             'last_login_at' => 'datetime',
+            'preferences' => 'array',
         ];
     }
+
+    public function shownName(): string
+    {
+        return $this->display_name ?: ($this->real_name ?: $this->username);
+    }
+
+    public function avatarUrl(): ?string
+    {
+        return $this->avatar_path === null
+            ? null
+            : sprintf('/api/portal/avatars/%d?v=%s', $this->id, $this->avatar_version);
+    }
+
+    public function notificationSettings(): array
+    {
+        $saved = (array) (($this->preferences ?? [])['notify'] ?? []);
+
+        return [
+            'events' => array_merge(self::DEFAULT_NOTIFY_EVENTS, (array) ($saved['events'] ?? [])),
+            'auto' => array_merge(self::DEFAULT_AUTO_SUBSCRIBE, (array) ($saved['auto'] ?? [])),
+        ];
+    }
+
+    public const DEFAULT_NOTIFY_EVENTS = [
+        'comment' => true,
+        'status' => true,
+        'assignment' => true,
+        'priority' => true,
+        'linked' => true,
+        'actions' => true,
+        'other' => false,
+    ];
+
+    public const DEFAULT_AUTO_SUBSCRIBE = [
+        'assigned' => true,
+        'commented' => true,
+        'opened' => true,
+    ];
 
     public function assignedCases(): HasMany
     {

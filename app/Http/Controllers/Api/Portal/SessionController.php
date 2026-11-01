@@ -23,6 +23,12 @@ class SessionController extends Controller
                 'real_name' => $user->real_name,
                 'flags' => $user->flags ?? [],
                 'public_label' => $user->publicLabel(),
+                'avatar_url' => $user->avatarUrl(),
+                'display_name' => $user->display_name,
+                'bio' => $user->bio,
+                'shown_name' => $user->shownName(),
+                'preferences' => $user->preferences,
+                'notify' => $user->notificationSettings(),
             ],
             'wiki' => [
                 'name' => config('app.name'),

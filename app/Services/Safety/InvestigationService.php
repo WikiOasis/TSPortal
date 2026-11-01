@@ -55,6 +55,8 @@ final class InvestigationService
             return $investigation;
         });
 
+        app(InlineImages::class)->claim($investigation, $input['premise'] ?? null, $actor);
+
         foreach ((array) ($input['subjects'] ?? []) as $named) {
             if (! is_array($named) || ! isset($named['username'])) {
                 continue;

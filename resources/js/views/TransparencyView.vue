@@ -14,38 +14,31 @@
 		<LoadError :error="error" :retry="reload" />
 		<cdx-progress-bar v-if="loading" aria-label="Loading reports" />
 
-		<div class="ts-panel ts-scroll">
-			<cdx-table
-				caption="Transparency reports"
-				:hide-caption="true"
-				:columns="columns"
-				:data="rows"
-			>
-				<template #item-reference="{ item, row }">
-					<router-link :to="{ name: 'transparency-report', params: { id: row.id } }" class="ts-mono">
-						{{ item }}
-					</router-link>
-				</template>
-				<template #item-period="{ row }">
-					{{ date( row.period_start ) }} – {{ date( row.period_end ) }}
-				</template>
-				<template #item-status="{ item }">
-					<cdx-info-chip :status="item === 'published' ? 'success' : 'notice'">
-						{{ item === 'published' ? 'Published' : 'Draft' }}
-					</cdx-info-chip>
-				</template>
-				<template #item-threshold="{ item }">
-					{{ item > 0 ? `Counts of ${ item } or fewer withheld` : 'Exact counts' }}
-				</template>
-				<template #item-published_at="{ item, row }">
-					{{ item ? `${ date( item ) } by ${ row.published_by }` : '—' }}
-				</template>
-				<template #empty-state>
-					No reports yet. A report covers a period and freezes its figures on the day it
-					is published, so the numbers cannot move afterwards.
-				</template>
-			</cdx-table>
-		</div>
+		<p v-if="!rows.length && !loading" class="ts-empty-state">
+			No reports yet. A report covers a period and freezes its figures on the day it is published,
+			so the numbers cannot move afterwards.
+		</p>
+
+		<ul class="ts-acc">
+			<li v-for="row in rows" :key="row.id" class="ts-acc__item">
+				<router-link :to="{ name: 'transparency-report', params: { id: row.id } }" class="ts-acc__head ts-tr-row">
+					<span class="ts-acc__title">
+						<strong>{{ row.title }}</strong>
+						<span class="ts-meta">{{ date( row.period_start ) }} – {{ date( row.period_end ) }}</span>
+					</span>
+					<span class="ts-acc__aside">
+						<span v-if="row.published_at" class="ts-meta">
+							Published {{ date( row.published_at ) }}<template v-if="row.published_by"> by {{ row.published_by }}</template>
+						</span>
+						<span v-if="row.threshold > 0" class="ts-meta">Counts of {{ row.threshold }} or fewer withheld</span>
+						<cdx-info-chip :status="row.status === 'published' ? 'success' : 'notice'">
+							{{ row.status === 'published' ? 'Published' : 'Draft' }}
+						</cdx-info-chip>
+					</span>
+					<cdx-icon :icon="cdxIconNext" size="small" class="ts-tr-row__go" />
+				</router-link>
+			</li>
+		</ul>
 
 		<cdx-dialog
 			v-model:open="opening"
@@ -66,29 +59,22 @@
 				<cdx-text-input v-model="form.title" placeholder="Trust &amp; Safety, April to June 2026" />
 			</cdx-field>
 
-			<div class="ts-inline">
+			<div v-if="quarters.length" class="ts-tr-quarters">
+				<cdx-button v-for="quarter in quarters" :key="quarter.title" size="small" @click="fill( quarter )">
+					{{ quarter.label }}
+				</cdx-button>
+			</div>
+
+			<div class="ts-inline ts-tr-dates">
 				<cdx-field>
 					<template #label>From</template>
-					<cdx-text-input v-model="form.period_start" input-type="date" />
+					<DatePicker v-model="form.period_start" placeholder="Start date" :max="form.period_end || undefined" :clearable="false" />
 				</cdx-field>
 				<cdx-field>
 					<template #label>To</template>
-					<cdx-text-input v-model="form.period_end" input-type="date" />
+					<DatePicker v-model="form.period_end" placeholder="End date" :min="form.period_start || undefined" :clearable="false" />
 				</cdx-field>
 			</div>
-
-			<cdx-message v-if="quarters.length" type="notice" :inline="true">
-				<span>Or take a recent quarter:</span>
-				<cdx-button
-					v-for="quarter in quarters"
-					:key="quarter.title"
-					weight="quiet"
-					size="small"
-					@click="fill( quarter )"
-				>
-					{{ quarter.label }}
-				</cdx-button>
-			</cdx-message>
 		</cdx-dialog>
 	</main>
 </template>
@@ -97,10 +83,10 @@
 import { computed, inject, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import {
-	CdxButton, CdxDialog, CdxField, CdxIcon, CdxInfoChip, CdxMessage,
-	CdxProgressBar, CdxTable, CdxTextInput
+	CdxButton, CdxDialog, CdxField, CdxIcon, CdxInfoChip, CdxProgressBar, CdxTextInput
 } from '@wikimedia/codex';
-import { cdxIconAdd } from '@wikimedia/codex-icons';
+import { cdxIconAdd, cdxIconNext } from '@wikimedia/codex-icons';
+import DatePicker from '../components/DatePicker.vue';
 import PageHeader from '../components/PageHeader.vue';
 import LoadError from '../components/LoadError.vue';
 import { api } from '../lib/api.js';
@@ -117,15 +103,6 @@ const creating = ref( false );
 const fieldError = ref( '' );
 
 const form = reactive( { title: '', period_start: '', period_end: '' } );
-
-const columns = [
-	{ id: 'reference', label: 'Reference', width: '9rem' },
-	{ id: 'title', label: 'Title' },
-	{ id: 'period', label: 'Period', width: '14rem' },
-	{ id: 'status', label: 'Status', width: '8rem' },
-	{ id: 'threshold', label: 'Small counts', width: '14rem' },
-	{ id: 'published_at', label: 'Published', width: '12rem' }
-];
 
 const valid = computed( () =>
 	form.title.trim() !== '' && form.period_start !== '' && form.period_end !== '' );

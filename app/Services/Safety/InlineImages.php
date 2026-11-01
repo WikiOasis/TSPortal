@@ -25,7 +25,7 @@ final class InlineImages
         'image/webp' => 'webp',
     ];
 
-    public function store(Investigation|SafetyCase $owner, UploadedFile $file, User $actor): InlineImage
+    public function store(Investigation|SafetyCase|null $owner, UploadedFile $file, User $actor): InlineImage
     {
         $bytes = (string) $file->get();
         $mime = $this->detect($bytes);
@@ -67,6 +67,20 @@ final class InlineImages
         ]);
 
         return $image;
+    }
+
+    public function claim(Investigation $investigation, ?string $text, User $actor): void
+    {
+        if ($text === null || preg_match_all(self::TOKEN, $text, $found) < 1) {
+            return;
+        }
+
+        InlineImage::query()
+            ->whereIn('uuid', array_unique($found[1]))
+            ->whereNull('investigation_id')
+            ->whereNull('case_id')
+            ->where('uploaded_by', $actor->id)
+            ->update(['investigation_id' => $investigation->id]);
     }
 
     /**
@@ -124,8 +138,12 @@ final class InlineImages
         return max(0, (int) config('attachments.inline_max_bytes', 10 * 1024 * 1024));
     }
 
-    private function folderFor(Investigation|SafetyCase $owner): string
+    private function folderFor(Investigation|SafetyCase|null $owner): string
     {
+        if ($owner === null) {
+            return 'staged';
+        }
+
         return preg_replace('/[^A-Za-z0-9._-]/', '', (string) $owner->reference) ?: (string) $owner->id;
     }
 

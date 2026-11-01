@@ -92,6 +92,7 @@ Route::prefix('portal')->name('portal.')->group(function () {
 
         Route::get('/inline-images/{inlineImage}', [Portal\InlineImageController::class, 'show'])->name('inline-images.show');
         Route::post('/cases/{case}/images', [Portal\InlineImageController::class, 'forCase'])->name('cases.images');
+        Route::post('/investigations/images', [Portal\InlineImageController::class, 'staged'])->name('investigations.images.staged');
         Route::post('/investigations/{investigation}/images', [Portal\InlineImageController::class, 'forInvestigation'])->name('investigations.images');
 
         Route::put('/cases/{case}/appeal/action', [Portal\AppealController::class, 'link'])->name('appeals.link');
@@ -175,9 +176,27 @@ Route::prefix('portal')->name('portal.')->group(function () {
             ->middleware('staff:'.User::FLAG_ADMIN)
             ->name('transparency.publish');
 
+        Route::put('/me/profile', [Portal\MeController::class, 'profile'])->name('me.profile');
+        Route::put('/me/preferences', [Portal\MeController::class, 'update'])->name('me.update');
+        Route::post('/me/avatar', [Portal\MeController::class, 'storeAvatar'])->name('me.avatar.store');
+        Route::delete('/me/avatar', [Portal\MeController::class, 'destroyAvatar'])->name('me.avatar.destroy');
+        Route::post('/me/backgrounds', [Portal\MeController::class, 'storeBackground'])->name('me.backgrounds.store');
+        Route::delete('/me/backgrounds/{name}', [Portal\MeController::class, 'destroyBackground'])->name('me.backgrounds.destroy');
+        Route::get('/backgrounds/{name}', [Portal\MeController::class, 'background'])->name('backgrounds.show');
+        Route::get('/avatars/{user}', [Portal\MeController::class, 'avatar'])->name('avatars.show');
+
+        Route::get('/notifications', [Portal\NotificationController::class, 'index'])->name('notifications.index');
+        Route::post('/notifications/read', [Portal\NotificationController::class, 'readAll'])->name('notifications.read-all');
+        Route::post('/notifications/{notification}/read', [Portal\NotificationController::class, 'read'])->name('notifications.read');
+
+        Route::get('/subscriptions/{type}/{id}', [Portal\SubscriptionController::class, 'show'])->whereNumber('id')->name('subscriptions.show');
+        Route::put('/subscriptions/{type}/{id}', [Portal\SubscriptionController::class, 'store'])->whereNumber('id')->name('subscriptions.store');
+        Route::delete('/subscriptions/{type}/{id}', [Portal\SubscriptionController::class, 'destroy'])->whereNumber('id')->name('subscriptions.destroy');
+
         Route::get('/audit', [Portal\AuditController::class, 'index'])->name('audit.index');
 
         Route::get('/staff', [Portal\StaffController::class, 'index'])->name('staff.index');
+        Route::get('/staff/{user}', [Portal\StaffController::class, 'show'])->name('staff.show');
         Route::patch('/staff/{user}', [Portal\StaffController::class, 'update'])
             ->middleware('staff:'.User::FLAG_USER_MANAGER)
             ->name('staff.update');

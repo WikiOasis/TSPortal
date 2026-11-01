@@ -206,7 +206,7 @@ export const NOTE_KIND_LABELS = {
 };
 
 export const SUBJECT_ROLES = [
-	{ value: 'subject', label: 'Subject of the file' },
+	{ value: 'subject', label: 'Subject' },
 	{ value: 'witness', label: 'Witness' },
 	{ value: 'reporter', label: 'Reporter' },
 	{ value: 'related', label: 'Related account' }

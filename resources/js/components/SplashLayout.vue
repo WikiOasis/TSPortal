@@ -17,12 +17,12 @@
 		<aside class="ts-splash__media">
 			<div class="ts-splash__image-placeholder">
 				<img
-					src="https://cdn.wikioasis.org/static/tsportal_login_0_1_0.jpeg"
-					alt="Battersea power station at night, from the rooftop of a neighbouring building."
+					:src="imageUrl"
+					alt="A tram on a cobbled street in Prague, seen from the roof of the Rudolfinum."
 				>
 			</div>
 			<p class="ts-splash__credit">
-				<a href="https://cdn.wikioasis.org/static/tsportal_login_0_1_0.jpeg" target="_blank" rel="noopener">Zippybonzo</a>,
+				<a :href="imageUrl" target="_blank" rel="noopener">Zippybonzo</a>,
 				<a href="https://en.wikipedia.org/wiki/Public_domain" target="_blank" rel="noopener">Public domain</a>
 			</p>
 		</aside>
@@ -30,6 +30,7 @@
 </template>
 
 <script setup>
+const imageUrl = '/images/tsportal_login_1_5_1.jpg';
 const appName = window.TSPortal?.appName ?? 'TSPortal';
-const version = window.TSPortal?.version ?? 'beta';
+const version = window.TSPortal?.version ?? '1.5.1';
 </script>

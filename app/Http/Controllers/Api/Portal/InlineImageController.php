@@ -22,6 +22,11 @@ class InlineImageController extends Controller
         return $this->upload($request, $investigation);
     }
 
+    public function staged(Request $request): JsonResponse
+    {
+        return $this->upload($request, null);
+    }
+
     public function forCase(Request $request, SafetyCase $case): JsonResponse
     {
         return $this->upload($request, $case);
@@ -53,7 +58,7 @@ class InlineImageController extends Controller
         ]);
     }
 
-    private function upload(Request $request, Investigation|SafetyCase $owner): JsonResponse
+    private function upload(Request $request, Investigation|SafetyCase|null $owner): JsonResponse
     {
         $request->validate([
             'file' => ['required', 'file'],

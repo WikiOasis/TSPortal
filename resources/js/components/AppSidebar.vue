@@ -19,10 +19,14 @@
 
 			<div class="ts-topbar__spacer" />
 
-			<cdx-button class="ts-topbar__search" weight="quiet" @click="openSearch">
+			<cdx-button
+				class="ts-topbar__search"
+				weight="quiet"
+				:aria-label="`Search (${ shortcutHint })`"
+				:title="`Search (${ shortcutHint })`"
+				@click="openSearch"
+			>
 				<cdx-icon :icon="cdxIconSearch" />
-				<span class="ts-topbar__search-label">Search</span>
-				<kbd class="ts-topbar__kbd">{{ shortcutHint }}</kbd>
 			</cdx-button>
 
 			<cdx-button
@@ -35,14 +39,8 @@
 				<span class="ts-topbar__action-label">Open investigation</span>
 			</cdx-button>
 
-			<div class="ts-topbar__user">
-				<span class="ts-topbar__username">{{ session.user.username }}</span>
-
-				<form method="POST" :action="logoutUrl">
-					<input type="hidden" name="_token" :value="csrf">
-					<cdx-button type="submit" weight="quiet" size="small">Sign out</cdx-button>
-				</form>
-			</div>
+			<NotificationMenu />
+			<UserMenu />
 		</header>
 
 		<div class="ts-shell__body">
@@ -96,6 +94,7 @@
 		</div>
 
 		<OpenInvestigationDialog v-model:open="showOpenFile" @opened="onOpened" />
+		<SettingsDialog v-model:open="ui.settingsOpen" />
 		<QuickSearch v-model:open="showSearch" @open-investigation="openFile" />
 	</div>
 </template>
@@ -107,8 +106,12 @@ import { CdxButton, CdxIcon } from '@wikimedia/codex';
 import { cdxIconAdd, cdxIconMenu, cdxIconSearch } from '@wikimedia/codex-icons';
 import OpenInvestigationDialog from './OpenInvestigationDialog.vue';
 import QuickSearch from './QuickSearch.vue';
+import NotificationMenu from './NotificationMenu.vue';
+import SettingsDialog from './SettingsDialog.vue';
+import UserMenu from './UserMenu.vue';
 import { sections } from '../lib/navigation.js';
 import { session } from '../lib/session.js';
+import { ui } from '../lib/ui.js';
 
 const route = useRoute();
 const router = useRouter();

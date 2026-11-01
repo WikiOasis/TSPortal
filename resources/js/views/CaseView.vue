@@ -6,6 +6,7 @@
 		<template v-if="item">
 			<PageHeader :title="item.subject" :subtitle="`${ TYPE_LABELS[ item.type ] ?? item.type } · ${ item.reference }`">
 				<template #actions>
+					<WatchButton type="case" :id="item.id" />
 					<cdx-button
 						v-if="canConcludeAppeal"
 						action="progressive"
@@ -367,6 +368,7 @@ import {
 	cdxIconAdd, cdxIconCheck, cdxIconCopy, cdxIconEllipsis, cdxIconRobot, cdxIconSearch, cdxIconTag
 } from '@wikimedia/codex-icons';
 import PageHeader from '../components/PageHeader.vue';
+import WatchButton from '../components/WatchButton.vue';
 import LoadError from '../components/LoadError.vue';
 import StatusChip from '../components/StatusChip.vue';
 import ActivityFeed from '../components/ActivityFeed.vue';

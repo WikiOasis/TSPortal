@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Safety;
 
 use App\Models\AuditLog;
+use App\Services\Notifications\Notifier;
 use App\Services\Slack\SlackNotifier;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
@@ -29,6 +30,7 @@ final class Audit
         ]);
 
         SlackNotifier::announce($log, $target);
+        Notifier::handle($log, $target);
 
         return $log;
     }

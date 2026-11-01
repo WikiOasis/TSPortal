@@ -2,6 +2,7 @@
 	<main class="ts-page">
 		<PageHeader
 			title="Queue"
+			:subtitle="meta.total ? `${ meta.total.toLocaleString() } ${ meta.total === 1 ? 'item matches' : 'items match' }` : ''"
 		>
 			<template #actions>
 				<cdx-button v-if="selected.length" @click="clearSelection">
@@ -10,99 +11,18 @@
 			</template>
 		</PageHeader>
 
-		<cdx-message v-if="automation && automation.open" type="notice" :icon="cdxIconRobot" :allow-user-dismiss="false" class="ts-ar-strip">
-			<p>
-				<strong>{{ automation.open.toLocaleString() }} automated flags are open</strong>:
-				{{ ( automation.urgent ?? 0 ).toLocaleString() }} need review quickly,
-				{{ ( automation.review ?? 0 ).toLocaleString() }} need review,
-				{{ ( automation.unlikely ?? 0 ).toLocaleString() }} are unlikely to need it.
-				They're listed here with everything else, but they're faster to work through in Automation.
-			</p>
-			<cdx-button action="progressive" @click="$router.push( { name: 'automation' } )">Open Automation</cdx-button>
-		</cdx-message>
-
-		<div class="ts-toolbar">
-			<cdx-field class="ts-toolbar__search">
-				<template #label>Search</template>
-				<template #description>
-					Words, or conditions like <code>type:report</code> and <code>with:me</code>.
-					<a href="#" @click.prevent="showHelp = !showHelp">
-						{{ showHelp ? 'Hide what it accepts' : 'What it accepts' }}
-					</a>
-				</template>
-				<cdx-search-input
-					v-model="filters.q"
-					placeholder="harassment type:report with:me"
-					@update:model-value="debouncedReload"
-				/>
-			</cdx-field>
-
-			<cdx-field>
-				<template #label>Status</template>
-				<cdx-select v-model:selected="filters.status" :menu-items="statusOptions" @update:selected="reload" />
-			</cdx-field>
-
-			<cdx-field>
-				<template #label>Assigned</template>
-				<cdx-select v-model:selected="filters.assignee" :menu-items="assigneeFilterOptions" @update:selected="reload" />
-			</cdx-field>
-
-			<cdx-field>
-				<template #label>Priority</template>
-				<cdx-select v-model:selected="filters.priority" :menu-items="priorityFilterOptions" @update:selected="reload" />
-			</cdx-field>
-
-			<cdx-field>
-				<template #label>Risk</template>
-				<cdx-select v-model:selected="filters.threat" :menu-items="threatOptions" @update:selected="reload" />
-			</cdx-field>
-
-			<cdx-field>
-				<template #label>Source</template>
-				<cdx-select v-model:selected="filters.source" :menu-items="sourceOptions" @update:selected="reload" />
-			</cdx-field>
-
-			<cdx-field>
-				<template #label>File</template>
-				<cdx-select v-model:selected="filters.investigation" :menu-items="fileOptions" @update:selected="reload" />
-			</cdx-field>
-
-			<cdx-field>
-				<template #label>Order</template>
-				<cdx-select v-model:selected="filters.sort" :menu-items="sortOptions" @update:selected="reload" />
-			</cdx-field>
-		</div>
-
-		<div class="ts-kinds">
-			<span class="ts-kinds__label">Kinds</span>
-			<cdx-checkbox
-				v-for="kind in typeOptions"
-				:key="kind.value"
-				v-model="kinds"
-				:input-value="kind.value"
-				:inline="true"
-				@update:model-value="onKindsChanged"
-			>
-				{{ kind.label }}
-			</cdx-checkbox>
-			<cdx-button v-if="kinds.length" weight="quiet" size="small" @click="clearKinds">
-				All kinds
-			</cdx-button>
-		</div>
-
-		<div v-if="showHelp" class="ts-panel ts-scroll">
-			<dl class="ts-dl">
-				<template v-for="row in help" :key="row.prefix">
-					<dt><code>{{ row.prefix }}</code></dt>
-					<dd>
-						{{ row.what }}
-						<button type="button" class="ts-linkish" @click="useExample( row.example )">
-							<code>{{ row.example }}</code>
-						</button>
-					</dd>
-				</template>
-			</dl>
-		</div>
+		<FilterBar
+			v-model="filters"
+			v-model:search="search"
+			v-model:sort="sort"
+			:fields="fields"
+			:defaults="defaultFilters"
+			:sort-options="sortOptions"
+			:searchable="true"
+			search-placeholder="Search, or try type:report"
+			@update:search="debouncedReload"
+			@change="onFiltersChanged"
+		/>
 
 		<LoadError :error="error" :retry="reload" />
 
@@ -249,16 +169,19 @@
 import { computed, inject, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
-	CdxButton, CdxCheckbox, CdxField, CdxInfoChip, CdxMessage, CdxProgressBar, CdxSearchInput,
-	CdxSelect, CdxTable
+	CdxButton, CdxInfoChip, CdxProgressBar, CdxSelect, CdxTable
 } from '@wikimedia/codex';
+import {
+	cdxIconAlert, cdxIconClock, cdxIconFlag, cdxIconSearch, cdxIconUserAvatar, cdxIconUserGroup
+} from '@wikimedia/codex-icons';
 import PageHeader from '../components/PageHeader.vue';
 import LoadError from '../components/LoadError.vue';
+import FilterBar from '../components/FilterBar.vue';
 import OpenInvestigationDialog from '../components/OpenInvestigationDialog.vue';
 import { api } from '../lib/api.js';
 import { ago, chipTone, dateTime, PRIORITIES, TYPE_LABELS } from '../lib/format.js';
 import { bucket } from '../lib/autoreview.js';
-import { cdxIconRobot } from '@wikimedia/codex-icons';
+import { session } from '../lib/session.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -273,43 +196,54 @@ const busy = ref( null );
 const selected = ref( [] );
 const showOpenFile = ref( false );
 const openingEach = ref( false );
-const showHelp = ref( false );
-const help = ref( [] );
-const automation = ref( null );
 
-const kinds = ref(
-	typeof route.query.type === 'string' ? route.query.type.split( ',' ).filter( Boolean ) : []
-);
+const SOURCES = [ 'people', 'automated', 'automated:urgent', 'automated:review', 'automated:unlikely', 'automated:waiting' ];
+const KINDS = [ 'report', 'appeal', 'contact', 'data' ];
 
-const filters = reactive( {
-	q: initialSearch(),
-	status: 'open',
-	assignee: null,
-	priority: null,
-	threat: route.query.threat ? 1 : null,
-	source: [ 'people', 'automated', 'automated:urgent', 'automated:review', 'automated:unlikely', 'automated:waiting' ].includes( route.query.source ) ? route.query.source : null,
-	investigation: route.query.file === 'none' ? 'none' : null,
-	sort: 'oldest',
-	page: 1
-} );
+const defaultFilters = { status: 'open' };
+
+function fromRoute() {
+	const q = route.query;
+	const out = {};
+
+	if ( q.status !== 'any' ) {
+		out.status = typeof q.status === 'string' && q.status ? q.status : 'open';
+	}
+
+	const assignee = q.assignee ?? ( q.with === 'me' ? 'me' : null );
+	if ( assignee ) {
+		out.assignee = String( assignee );
+	}
+	if ( typeof q.priority === 'string' && q.priority ) {
+		out.priority = q.priority;
+	}
+	if ( q.threat ) {
+		out.threat = true;
+	}
+	if ( q.stale ) {
+		out.stale = true;
+	}
+	if ( SOURCES.includes( q.source ) ) {
+		out.source = q.source;
+	}
+	if ( q.file === 'none' ) {
+		out.unfiled = true;
+	}
+
+	const kinds = String( q.kind ?? q.type ?? '' ).split( ',' ).filter( ( k ) => KINDS.includes( k ) );
+	if ( kinds.length ) {
+		out.kind = kinds;
+	}
+
+	return out;
+}
+
+const filters = ref( fromRoute() );
+const search = ref( typeof route.query.q === 'string' ? route.query.q : '' );
+const sort = ref( typeof route.query.sort === 'string' ? route.query.sort : 'oldest' );
+const page = ref( 1 );
 
 const bulk = reactive( { status: null, assignee: null } );
-
-function initialSearch() {
-	const parts = [];
-
-	if ( typeof route.query.q === 'string' && route.query.q ) {
-		parts.push( route.query.q );
-	}
-	if ( route.query.with === 'me' ) {
-		parts.push( 'with:me' );
-	}
-	if ( route.query.stale === '1' ) {
-		parts.push( 'is:stale' );
-	}
-
-	return parts.join( ' ' );
-}
 
 const columns = [
 	{ id: 'reference', label: 'Ref', width: '7.5rem' },
@@ -331,7 +265,6 @@ const typeOptions = [
 
 const statusOptions = [
 	{ value: 'open', label: 'Open' },
-	{ value: '', label: 'Any' },
 	{ value: 'received', label: 'Received' },
 	{ value: 'in-review', label: 'Being read' },
 	{ value: 'investigating', label: 'Under investigation' },
@@ -357,29 +290,13 @@ const bulkStatusOptions = [
 
 const priorityOptions = PRIORITIES;
 
-const threatOptions = [
-	{ value: null, label: 'Any' },
-	{ value: 1, label: 'Threat to life' }
-];
-
 const sourceOptions = [
-	{ value: null, label: 'Any' },
 	{ value: 'people', label: 'Filed by people' },
 	{ value: 'automated', label: 'Automated' },
 	{ value: 'automated:urgent', label: 'Automated: needs review quickly' },
 	{ value: 'automated:review', label: 'Automated: needs review' },
 	{ value: 'automated:unlikely', label: 'Automated: unlikely to need review' },
 	{ value: 'automated:waiting', label: 'Automated: not sorted yet' }
-];
-
-const priorityFilterOptions = [
-	{ value: null, label: 'Any' },
-	...PRIORITIES
-];
-
-const fileOptions = [
-	{ value: null, label: 'Any' },
-	{ value: 'none', label: 'No file yet' }
 ];
 
 const sortOptions = [
@@ -391,10 +308,24 @@ const sortOptions = [
 	{ value: 'reference', label: 'Reference' }
 ];
 
-const assigneeFilterOptions = computed( () => [
-	{ value: null, label: 'Anyone' },
-	{ value: 'none', label: 'Nobody yet' },
-	...team.value.map( ( u ) => ( { value: u.id, label: u.username } ) )
+const fields = computed( () => [
+	{ key: 'status', label: 'Status', icon: cdxIconFlag, options: statusOptions },
+	{
+		key: 'assignee',
+		label: 'Assigned to',
+		icon: cdxIconUserAvatar,
+		options: [
+			{ value: 'me', label: 'Me' },
+			{ value: 'none', label: 'Nobody yet' },
+			...team.value.filter( ( u ) => u.id !== session.user.id ).map( ( u ) => ( { value: String( u.id ), label: u.username } ) )
+		]
+	},
+	{ key: 'priority', label: 'Priority', icon: cdxIconAlert, options: PRIORITIES },
+	{ key: 'kind', label: 'Kind', icon: cdxIconSearch, options: typeOptions, multi: true },
+	{ key: 'source', label: 'Source', icon: cdxIconUserGroup, options: sourceOptions },
+	{ key: 'unfiled', label: 'Not on a file yet', icon: cdxIconUserGroup, boolean: true },
+	{ key: 'stale', label: 'Quiet for 14 days', icon: cdxIconClock, boolean: true },
+	{ key: 'threat', label: 'Threat to life', icon: cdxIconAlert, boolean: true }
 ] );
 
 const assigneeOptions = computed( () => [
@@ -406,31 +337,77 @@ const firstSelected = computed( () => (
 	selected.value.length ? rows.value.find( ( r ) => r.id === selected.value[ 0 ] ) ?? null : null
 ) );
 
+function apiParams() {
+	const f = filters.value;
+	const [ source, bucketName ] = f.source ? f.source.split( ':' ) : [ null, null ];
+	const params = {
+		q: search.value,
+		type: ( f.kind ?? [] ).join( ',' ) || null,
+		assignee: f.assignee === 'me' ? session.user.id : ( f.assignee ?? null ),
+		priority: f.priority ?? null,
+		threat: f.threat ? 1 : null,
+		stale: f.stale ? 1 : null,
+		source: source ?? null,
+		bucket: bucketName ?? null,
+		investigation: f.unfiled ? 'none' : null,
+		sort: sort.value,
+		page: page.value
+	};
+
+	if ( f.status === 'open' ) {
+		params.open = 1;
+	} else if ( f.status ) {
+		params.status = f.status;
+	}
+
+	return params;
+}
+
+function syncRoute() {
+	const f = filters.value;
+	const query = {};
+
+	query.status = f.status ?? 'any';
+	if ( query.status === 'open' ) {
+		delete query.status;
+	}
+	if ( f.assignee ) {
+		query.assignee = f.assignee;
+	}
+	if ( f.priority ) {
+		query.priority = f.priority;
+	}
+	if ( f.kind?.length ) {
+		query.kind = f.kind.join( ',' );
+	}
+	if ( f.source ) {
+		query.source = f.source;
+	}
+	if ( f.unfiled ) {
+		query.file = 'none';
+	}
+	if ( f.stale ) {
+		query.stale = '1';
+	}
+	if ( f.threat ) {
+		query.threat = '1';
+	}
+	if ( search.value ) {
+		query.q = search.value;
+	}
+	if ( sort.value !== 'oldest' ) {
+		query.sort = sort.value;
+	}
+
+	router.replace( { query } );
+}
+
 async function reload() {
 	loading.value = true;
 	error.value = null;
 
-	const params = {
-		q: filters.q,
-		type: kinds.value.join( ',' ),
-		assignee: filters.assignee,
-		priority: filters.priority,
-		threat: filters.threat,
-		source: filters.source?.split( ':' )[ 0 ] ?? null,
-		bucket: filters.source?.split( ':' )[ 1 ] ?? null,
-		investigation: filters.investigation,
-		sort: filters.sort,
-		page: filters.page
-	};
-
-	if ( filters.status === 'open' ) {
-		params.open = 1;
-	} else if ( filters.status ) {
-		params.status = filters.status;
-	}
-
 	try {
-		const response = await api.cases( params );
+		const response = await api.cases( apiParams() );
 		rows.value = response.data;
 		meta.value = response.meta;
 	} catch ( e ) {
@@ -438,6 +415,13 @@ async function reload() {
 	} finally {
 		loading.value = false;
 	}
+}
+
+function onFiltersChanged() {
+	page.value = 1;
+	clearSelection();
+	syncRoute();
+	reload();
 }
 
 async function loadTeam() {
@@ -559,55 +543,16 @@ function clearSelection() {
 let timer = null;
 function debouncedReload() {
 	clearTimeout( timer );
-	timer = setTimeout( () => {
-		filters.page = 1;
-		router.replace( { query: filters.q ? { q: filters.q } : {} } );
-		reload();
-	}, 300 );
+	timer = setTimeout( onFiltersChanged, 300 );
 }
 
-function go( page ) {
-	filters.page = page;
+function go( to ) {
+	page.value = to;
 	reload();
-}
-
-function onKindsChanged() {
-	filters.page = 1;
-	reload();
-}
-
-function clearKinds() {
-	kinds.value = [];
-	onKindsChanged();
-}
-
-function useExample( example ) {
-	filters.q = filters.q.trim() ? `${ filters.q.trim() } ${ example }` : example;
-	filters.page = 1;
-	reload();
-}
-
-async function loadHelp() {
-	try {
-		const response = await api.searchHelp();
-		help.value = response.data;
-	} catch ( e ) {
-		help.value = [];
-	}
-}
-
-async function loadAutomation() {
-	try {
-		automation.value = ( await api.autoReview() ).counts;
-	} catch ( e ) {
-		automation.value = null;
-	}
 }
 
 onMounted( () => {
 	reload();
 	loadTeam();
-	loadHelp();
-	loadAutomation();
 } );
 </script>

@@ -43,6 +43,7 @@ class CaseController extends Controller
             'category' => ['nullable', 'string', 'max:400'],
 
             'threat' => ['nullable', 'boolean'],
+            'stale' => ['nullable', 'boolean'],
             'source' => ['nullable', 'string', 'in:people,automated'],
             'bucket' => ['nullable', 'string', 'in:urgent,review,unlikely,waiting'],
 
@@ -81,6 +82,11 @@ class CaseController extends Controller
         }
         if (($filters['threat'] ?? false)) {
             $query->threatToLife();
+        }
+        if (($filters['stale'] ?? false)) {
+            $query->whereIn('status', SafetyCase::OPEN_STATUSES)
+                ->where('automated', false)
+                ->where('updated_at', '<', now()->subDays(14));
         }
         if (! empty($filters['source'])) {
             $query->where('automated', $filters['source'] === 'automated');

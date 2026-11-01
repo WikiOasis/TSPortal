@@ -1583,15 +1583,6 @@ tr:hover .ts-inline-select .cdx-select-vue__handle,
 		flex-shrink: 0;
 	}
 
-	&__kbd {
-		border: @border-width-base @border-style-base @border-color-subtle;
-		border-radius: @border-radius-sharp;
-		padding: 0 @spacing-25;
-		font-family: monospace;
-		font-size: @font-size-x-small;
-		color: @color-subtle;
-	}
-
 	&__user {
 		display: flex;
 		align-items: center;
@@ -1603,8 +1594,6 @@ tr:hover .ts-inline-select .cdx-select-vue__handle,
 
 	@media ( max-width: @ts-bp-desktop ) {
 		&__action-label,
-		&__search-label,
-		&__kbd,
 		&__username {
 			display: none;
 		}
@@ -1637,25 +1626,24 @@ tr:hover .ts-inline-select .cdx-select-vue__handle,
 	overflow-y: auto;
 	overscroll-behavior: contain;
 
+	overflow-x: hidden;
 	transition-property: width;
 	transition-duration: @transition-duration-medium;
-	transition-timing-function: @transition-timing-function-user;
+	transition-timing-function: cubic-bezier( 0.32, 0.72, 0, 1 );
 
 	&--collapsed {
 		width: 3.25rem;
 
 		.ts-sidebar__label {
-			position: absolute;
-			width: 1px;
-			height: 1px;
-			overflow: hidden;
-			clip-path: inset( 50% );
-			white-space: nowrap;
+			opacity: 0;
+			transform: translateX( -4px );
 		}
+	}
 
-		.ts-sidebar__link {
-			justify-content: center;
-		}
+	&__label {
+		opacity: 1;
+		transition: opacity @transition-duration-medium @transition-timing-function-user,
+			transform @transition-duration-medium @transition-timing-function-user;
 	}
 
 	&__link {
@@ -1663,6 +1651,7 @@ tr:hover .ts-inline-select .cdx-select-vue__handle,
 		align-items: center;
 		gap: @spacing-50;
 		padding: @spacing-25 @spacing-50;
+		flex-shrink: 0;
 		border-radius: @border-radius-base;
 		color: @color-subtle;
 		@media ( pointer: coarse ) {
@@ -1717,15 +1706,8 @@ tr:hover .ts-inline-select .cdx-select-vue__handle,
 			width: min( 17rem, 80vw );
 
 			.ts-sidebar__label {
-				position: static;
-				width: auto;
-				height: auto;
-				overflow: visible;
-				clip-path: none;
-			}
-
-			.ts-sidebar__link {
-				justify-content: flex-start;
+				opacity: 1;
+				transform: none;
 			}
 		}
 
@@ -4428,3 +4410,5 @@ tr:hover .ts-chip-select .cdx-select-vue__handle {
 		overflow-y: auto;
 	}
 }
+
+@import 'pages.less';

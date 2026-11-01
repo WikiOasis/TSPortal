@@ -28,40 +28,38 @@
 				</div>
 			</router-link>
 
-			<nav class="ts-strip ts-dash__strip" aria-label="At a glance">
+			<nav class="ts-dash__tiles" aria-label="At a glance">
 				<router-link
 					v-for="tile in tiles"
 					:key="tile.key"
 					:to="tile.to"
-					class="ts-strip__cell ts-stat"
+					class="ts-dash__tile"
 					:class="{
-						'ts-stat--alert': tile.alert,
-						'ts-strip__cell--empty': !tile.value
+						'ts-dash__tile--alert': tile.alert && tile.value > 0,
+						'ts-dash__tile--quiet': !tile.value
 					}"
 				>
-					<div class="ts-stat__label">{{ tile.label }}</div>
-					<div class="ts-stat__value">{{ tile.value.toLocaleString() }}</div>
-					<div class="ts-stat__detail">{{ tile.detail }}</div>
+					<span class="ts-dash__tile-value">{{ tile.value.toLocaleString() }}</span>
+					<span class="ts-dash__tile-label">{{ tile.label }}</span>
 				</router-link>
 			</nav>
 
-			<div v-if="warnings.length" class="ts-stack ts-dash__warnings">
-				<cdx-message
-					v-for="warning in warnings"
-					:key="warning.text"
-					:type="warning.type"
-					:allow-user-dismiss="false"
-				>
-					{{ warning.text }}
-					<router-link v-if="warning.to" :to="warning.to">{{ warning.link }}</router-link>
-				</cdx-message>
-			</div>
+			<section v-if="attention.length" class="ts-section" aria-labelledby="dash-attention">
+				<h2 id="dash-attention" class="ts-section__title">Needs attention</h2>
+				<ul class="ts-dash__attention">
+					<li v-for="item in attention" :key="item.text" :class="`ts-dash__flag ts-dash__flag--${ item.type }`">
+						<cdx-icon :icon="item.type === 'notice' ? cdxIconInfo : cdxIconAlert" size="small" />
+						<span class="ts-dash__flag-text">{{ item.text }}</span>
+						<router-link v-if="item.to" :to="item.to" class="ts-dash__flag-link">{{ item.link }}</router-link>
+					</li>
+				</ul>
+			</section>
 
 			<div class="ts-split ts-section">
 				<section aria-labelledby="dash-recent">
 					<div class="ts-section-head">
 						<h2 id="dash-recent" class="ts-section__title">Latest reports</h2>
-						<router-link :to="{ name: 'queue' }" class="ts-dash__more">Open the queue</router-link>
+						<router-link :to="{ name: 'queue', query: { sort: 'newest' } }" class="ts-dash__more">See all</router-link>
 					</div>
 					<div class="ts-panel ts-scroll ts-dash__table">
 						<cdx-table
@@ -98,10 +96,10 @@
 							<h2 id="dash-reviews" class="ts-section__title">Due a second look</h2>
 							<router-link
 								v-if="data.reviews.length"
-								:to="{ name: 'investigations' }"
+								:to="{ name: 'investigations', query: { due: '1' } }"
 								class="ts-dash__more"
 							>
-								All files
+								See all
 							</router-link>
 						</div>
 						<div class="ts-panel">
@@ -160,8 +158,8 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { CdxButton, CdxIcon, CdxMessage, CdxProgressBar, CdxTable } from '@wikimedia/codex';
-import { cdxIconReload } from '@wikimedia/codex-icons';
+import { CdxButton, CdxIcon, CdxProgressBar, CdxTable } from '@wikimedia/codex';
+import { cdxIconAlert, cdxIconInfo, cdxIconReload } from '@wikimedia/codex-icons';
 import PageHeader from '../components/PageHeader.vue';
 import LoadError from '../components/LoadError.vue';
 import StatusChip from '../components/StatusChip.vue';
@@ -205,105 +203,115 @@ const tiles = computed( () => {
 		return [];
 	}
 
-	const open = [ plural( d.open_items.cases, 'case' ), plural( d.open_items.investigations, 'file' ) ];
-	if ( d.open_items.unassigned ) {
-		open.push( `${ d.open_items.unassigned } unassigned` );
-	}
-
 	const list = [
 		{
-			key: 'mine',
-			label: 'Assigned to you',
-			value: d.mine.total,
-			detail: `${ plural( d.mine.cases, 'case' ) } · ${ plural( d.mine.investigations, 'file' ) }`,
-			to: { name: 'queue', query: { with: 'me' } }
+			key: 'my-cases',
+			label: 'Your cases',
+			value: d.mine.cases,
+			to: { name: 'queue', query: { assignee: 'me' } }
 		},
 		{
-			key: 'open',
-			label: 'Open',
-			value: d.open_items.total,
-			detail: open.join( ' · ' ),
-			to: { name: 'queue' }
+			key: 'my-files',
+			label: 'Your investigations',
+			value: d.mine.investigations,
+			to: { name: 'investigations', query: { assignee: 'me' } }
 		},
 		{
-			key: 'due',
-			label: 'Due a look',
-			value: d.due_a_look.total,
-			alert: d.due_a_look.total > 0,
-			detail: `${ d.due_a_look.stale_cases } quiet for 14 days · ${ d.due_a_look.overdue_files } overdue`,
+			key: 'unassigned',
+			label: 'Cases nobody has',
+			value: d.open_items.unassigned,
+			alert: true,
+			to: { name: 'queue', query: { assignee: 'none' } }
+		},
+		{
+			key: 'stale',
+			label: 'Cases gone quiet',
+			value: d.due_a_look.stale_cases,
+			alert: true,
 			to: { name: 'queue', query: { stale: '1' } }
+		},
+		{
+			key: 'overdue',
+			label: 'Investigations to revisit',
+			value: d.due_a_look.overdue_files,
+			alert: true,
+			to: { name: 'investigations', query: { due: '1' } }
 		}
 	];
 
 	if ( d.automation && d.automation.open ) {
-		const auto = [ `${ d.automation.review.toLocaleString() } to review`, `${ d.automation.unlikely.toLocaleString() } unlikely` ];
-		if ( d.automation.waiting ) {
-			auto.push( `${ d.automation.waiting.toLocaleString() } unsorted` );
-		}
 		list.push( {
 			key: 'automation',
-			label: 'Automated, urgent',
+			label: 'Urgent automated flags',
 			value: d.automation.urgent,
 			alert: d.automation.unassigned_urgent > 0,
-			detail: auto.join( ' · ' ),
 			to: { name: 'automation' }
 		} );
 	}
 
-	list.push( {
-		key: 'attention',
-		label: 'Needs attention',
-		value: d.attention.total,
-		alert: d.attention.total > 0,
-		detail: attentionDetail.value,
-		to: { name: 'sanctions', query: { scope: 'broken' } }
-	} );
-
 	return list;
 } );
 
-const attentionDetail = computed( () => {
-	const a = data.value?.attention;
-	if ( !a ) {
-		return '';
-	}
-
-	const parts = [];
-	if ( a.partial_actions ) {
-		parts.push( `${ a.partial_actions } recorded but not enforced` );
-	}
-	if ( a.failed_actions ) {
-		parts.push( `${ a.failed_actions } action${ a.failed_actions === 1 ? '' : 's' } failed` );
-	}
-	if ( a.failed_removals ) {
-		parts.push( `${ a.failed_removals } erasure${ a.failed_removals === 1 ? '' : 's' } failed` );
-	}
-	if ( a.stuck_events ) {
-		parts.push( `${ a.stuck_events } update${ a.stuck_events === 1 ? '' : 's' } gave up` );
-	}
-	if ( a.manual_actions ) {
-		parts.push( `${ a.manual_actions } needing a person` );
-	}
-
-	return parts.length ? parts.join( ' · ' ) : 'Nothing outstanding.';
-} );
-
-const warnings = computed( () => {
+const attention = computed( () => {
 	const d = data.value;
 	if ( !d ) {
 		return [];
 	}
 
 	const list = [];
+	const a = d.attention;
 
-	if ( d.attention.partial_actions > 0 ) {
+	if ( a.partial_actions > 0 ) {
 		list.push( {
 			type: 'error',
-			text: `${ d.attention.partial_actions } suspension(s) were recorded on the wiki without the `
-				+ 'global lock being confirmed. Those accounts are listed as suspended but may still '
-				+ 'be able to sign in. Consider manually locking such accounts. ',
-			to: { name: 'sanctions', query: { scope: 'broken' } },
+			text: `${ plural( a.partial_actions, 'suspension' ) } recorded on the wiki without the global lock `
+				+ 'being confirmed. Those accounts may still be able to sign in.',
+			to: { name: 'sanctions', query: { scope: 'partial' } },
 			link: 'Find them'
+		} );
+	}
+
+	if ( a.failed_actions > 0 ) {
+		list.push( {
+			type: 'error',
+			text: `${ plural( a.failed_actions, 'action' ) } failed to reach the wiki.`,
+			to: { name: 'sanctions', query: { scope: 'failed' } },
+			link: 'Review'
+		} );
+	}
+
+	if ( a.manual_actions > 0 ) {
+		list.push( {
+			type: 'warning',
+			text: `${ plural( a.manual_actions, 'action' ) } still need someone to carry them out on the wiki by hand.`,
+			to: { name: 'sanctions', query: { scope: 'manual' } },
+			link: 'Open them'
+		} );
+	}
+
+	if ( a.failed_removals > 0 ) {
+		list.push( {
+			type: 'error',
+			text: `${ plural( a.failed_removals, 'erasure' ) } failed part-way through.`,
+			to: { name: 'data-removals', query: { show: 'failed' } },
+			link: 'Open them'
+		} );
+	}
+
+	if ( a.removals_waiting > 0 ) {
+		list.push( {
+			type: 'notice',
+			text: `${ plural( a.removals_waiting, 'erasure' ) } written down and waiting to be started.`,
+			to: { name: 'data-removals' },
+			link: 'Read them'
+		} );
+	}
+
+	if ( a.stuck_events > 0 ) {
+		list.push( {
+			type: 'error',
+			text: `${ plural( a.stuck_events, 'update' ) } gave up trying to reach WikiOasis, so nobody there can `
+				+ 'see them. Run php artisan tsportal:sync --retry-stuck once it is reachable.'
 		} );
 	}
 
@@ -311,41 +319,23 @@ const warnings = computed( () => {
 		list.push( {
 			type: 'error',
 			text: `MW_SUPPORTED_ACTIONS names ${ d.wiki.unknown_actions.length } thing(s) that are `
-				+ `not currently compatible: ${ d.wiki.unknown_actions.join( ', ' ) }. `
+				+ `not currently compatible: ${ d.wiki.unknown_actions.join( ', ' ) }.`
 		} );
 	}
 
 	if ( !d.wiki.centralauth_lock ) {
 		list.push( {
 			type: 'warning',
-			text: 'Central locking is disabled here. A suspension will explain itself on '
-				+ 'the login screen but may not stop the account signing in.'
+			text: 'Central locking is disabled here. A suspension will explain itself on the login screen '
+				+ 'but may not stop the account signing in.'
 		} );
 	}
 
 	if ( !d.wiki.push_enabled ) {
 		list.push( {
 			type: 'warning',
-			text: `Pushing to WikiOasis is switched off. Jobs are still recorded, and the `
-				+ `${ d.wiki.queued } update(s) queued will be sent when it is switched back on.`
-		} );
-	}
-
-	if ( d.attention.stuck_events > 0 ) {
-		list.push( {
-			type: 'error',
-			text: `${ d.attention.stuck_events } update(s) gave up trying to reach WikiOasis, so nobody `
-				+ 'there can see them. Run php artisan tsportal:sync --retry-stuck once it is reachable.'
-		} );
-	}
-
-	if ( d.attention.removals_waiting > 0 ) {
-		list.push( {
-			type: 'notice',
-			text: `${ d.attention.removals_waiting } erasure(s) are submitted and waiting for `
-				+ 'second approval. ',
-			to: { name: 'data-removals' },
-			link: 'Read them'
+			text: `Pushing to WikiOasis is switched off. Jobs are still recorded, and the ${ d.wiki.queued } `
+				+ 'update(s) queued will be sent when it is switched back on.'
 		} );
 	}
 

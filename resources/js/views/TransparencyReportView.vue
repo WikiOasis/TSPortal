@@ -34,20 +34,39 @@
 				These figures are now frozen.
 			</cdx-message>
 
-			<section v-if="figures" class="ts-section">
-				<h2>How these were produced</h2>
-				<div class="ts-panel">
-					<p>{{ figures.method.suppression }}</p>
-					<p v-if="figures.method.automated">{{ figures.method.automated }}</p>
-					<p class="ts-meta">
-						Covering {{ date( figures.period.from ) }} to {{ date( figures.period.to ) }} —
-						{{ figures.period.days }} days. Computed {{ dateTime( figures.method.generated_at ) }}.
-					</p>
+			<div v-if="figures" class="ts-dash__tiles ts-tr-tiles">
+				<div v-for="tile in tiles" :key="tile.label" class="ts-dash__tile">
+					<span class="ts-dash__tile-value">{{ tile.value }}</span>
+					<span class="ts-dash__tile-label">{{ tile.label }}</span>
 				</div>
-			</section>
+			</div>
 
-			<section v-if="figures" class="ts-section">
-				<h2>What came in</h2>
+			<details v-if="figures" class="ts-tr-method">
+				<summary>How these were produced</summary>
+				<p>{{ figures.method.suppression }}</p>
+				<p v-if="figures.method.automated">{{ figures.method.automated }}</p>
+				<p class="ts-meta">
+					Covering {{ date( figures.period.from ) }} to {{ date( figures.period.to ) }} —
+					{{ figures.period.days }} days. Computed {{ dateTime( figures.method.generated_at ) }}.
+				</p>
+			</details>
+
+			<div class="ts-tabs" role="tablist" aria-label="Sections">
+				<button
+					v-for="t in tabs"
+					:key="t.value"
+					type="button"
+					role="tab"
+					class="ts-tabs__tab"
+					:class="{ 'ts-tabs__tab--on': tab === t.value }"
+					:aria-selected="tab === t.value"
+					@click="tab = t.value"
+				>
+					{{ t.label }}
+				</button>
+			</div>
+
+			<section v-if="figures && tab === 'reports'" class="ts-section">
 				<div class="ts-charts">
 					<div class="ts-panel">
 						<h3 class="ts-chart__title">Totals</h3>
@@ -116,8 +135,7 @@
 				</div>
 			</section>
 
-			<section v-if="figures" class="ts-section">
-				<h2>What was done</h2>
+			<section v-if="figures && tab === 'actions'" class="ts-section">
 				<div class="ts-charts">
 					<div class="ts-panel">
 						<h3 class="ts-chart__title">Totals</h3>
@@ -153,8 +171,7 @@
 				</div>
 			</section>
 
-			<section v-if="figures" class="ts-section">
-				<h2>Appeals</h2>
+			<section v-if="figures && tab === 'appeals'" class="ts-section">
 
 				<div class="ts-charts">
 					<div class="ts-panel">
@@ -223,8 +240,7 @@
 				</div>
 			</section>
 
-			<section v-if="figures" class="ts-section">
-				<h2>Data requests</h2>
+			<section v-if="figures && tab === 'requests'" class="ts-section">
 				<div class="ts-charts">
 					<div class="ts-panel">
 						<dl class="ts-dl">
@@ -256,8 +272,7 @@
 				</div>
 			</section>
 
-			<section v-if="figures" class="ts-section">
-				<h2>CheckUser</h2>
+			<section v-if="figures && tab === 'checkuser'" class="ts-section">
 				<div class="ts-charts">
 					<div class="ts-panel">
 						<dl class="ts-dl">
@@ -297,8 +312,7 @@
 				</div>
 			</section>
 
-			<section class="ts-section">
-				<h2>Notes</h2>
+			<section v-if="tab === 'notes'" class="ts-section">
 				<div class="ts-panel">
 					<cdx-field>
 						<template #label>What the figures do not say on their own</template>
@@ -360,6 +374,32 @@ const confirming = ref( false );
 const notes = ref( '' );
 
 const figures = computed( () => report.value?.figures ?? null );
+
+const tab = ref( 'reports' );
+
+const tabs = [
+	{ value: 'reports', label: 'What came in' },
+	{ value: 'actions', label: 'What was done' },
+	{ value: 'appeals', label: 'Appeals' },
+	{ value: 'requests', label: 'Data requests' },
+	{ value: 'checkuser', label: 'CheckUser' },
+	{ value: 'notes', label: 'Notes' }
+];
+
+const tiles = computed( () => {
+	const f = figures.value;
+	if ( !f ) {
+		return [];
+	}
+
+	return [
+		{ label: 'Received', value: f.reports.total.display },
+		{ label: 'Actions taken', value: f.actions.total.display },
+		{ label: 'Appeals decided', value: f.appeals.decided.display },
+		{ label: 'Appeals accepted', value: f.appeals.accepted_share !== null ? `${ f.appeals.accepted_share }%` : '—' },
+		{ label: 'Erasures completed', value: f.data_requests.erasures_completed.display }
+	];
+} );
 
 const periodText = computed( () => report.value
 	? `${ date( report.value.period_start ) } to ${ date( report.value.period_end ) } · ${ report.value.reference }`

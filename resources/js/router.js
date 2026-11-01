@@ -12,6 +12,7 @@ import SubjectsView from './views/SubjectsView.vue';
 import SubjectView from './views/SubjectView.vue';
 import SanctionsView from './views/SanctionsView.vue';
 import StaffView from './views/StaffView.vue';
+import ProfileView from './views/ProfileView.vue';
 import AnalyticsView from './views/AnalyticsView.vue';
 import CheckUserView from './views/CheckUserView.vue';
 import TransparencyView from './views/TransparencyView.vue';
@@ -44,6 +45,7 @@ const routes = [
 
 	{ path: '/audit', name: 'audit', component: AuditView, meta: { title: 'Audit log' } },
 	{ path: '/team', name: 'staff', component: StaffView, meta: { title: 'Team' } },
+	{ path: '/team/:id', name: 'profile', component: ProfileView, props: true, meta: { title: 'Profile' } },
 
 	{ path: '/login', name: 'login', component: LoginView, meta: { public: true, title: 'Sign in' } },
 	{ path: '/no-access', name: 'no-access', component: NoAccessView, meta: { public: true, title: 'No access' } },

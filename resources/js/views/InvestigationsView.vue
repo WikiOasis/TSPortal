@@ -2,6 +2,7 @@
 	<main class="ts-page">
 		<PageHeader
 			title="Investigations"
+			:subtitle="meta.total ? `${ meta.total.toLocaleString() } ${ meta.total === 1 ? 'file matches' : 'files match' }` : ''"
 		>
 			<template #actions>
 				<cdx-button action="progressive" weight="primary" @click="showOpen = true">
@@ -11,41 +12,18 @@
 			</template>
 		</PageHeader>
 
-		<cdx-message
-			v-if="dueCount > 0 && filters.sort !== 'review'"
-			type="warning"
-			:allow-user-dismiss="false"
-		>
-			{{ dueCount }} investigation{{ dueCount === 1 ? '' : 's' }} passed the date somebody meant to look
-			again.
-			<a href="#" @click.prevent="showDue">Show those first</a>.
-		</cdx-message>
-
-		<div class="ts-toolbar">
-			<cdx-field>
-				<template #label>Search</template>
-				<cdx-search-input
-					v-model="filters.q"
-					placeholder="Reference, title or premise"
-					@update:model-value="debouncedReload"
-				/>
-			</cdx-field>
-
-			<cdx-field>
-				<template #label>Show</template>
-				<cdx-select v-model:selected="filters.status" :menu-items="statusOptions" @update:selected="reload" />
-			</cdx-field>
-
-			<cdx-field>
-				<template #label>With</template>
-				<cdx-select v-model:selected="filters.assignee" :menu-items="assigneeOptions" @update:selected="reload" />
-			</cdx-field>
-
-			<cdx-field>
-				<template #label>Order</template>
-				<cdx-select v-model:selected="filters.sort" :menu-items="sortOptions" @update:selected="reload" />
-			</cdx-field>
-		</div>
+		<FilterBar
+			v-model="filters"
+			v-model:search="search"
+			v-model:sort="sort"
+			:fields="fields"
+			:defaults="defaultFilters"
+			:sort-options="sortOptions"
+			:searchable="true"
+			search-placeholder="Reference, title or premise"
+			@update:search="debouncedReload"
+			@change="onFiltersChanged"
+		/>
 
 		<LoadError :error="error" :retry="reload" />
 		<cdx-progress-bar v-if="loading" aria-label="Loading investigations" />
@@ -112,20 +90,20 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
-import { useRouter } from 'vue-router';
-import {
-	CdxButton, CdxField, CdxIcon, CdxMessage, CdxProgressBar,
-	CdxSearchInput, CdxSelect, CdxTable
-} from '@wikimedia/codex';
-import { cdxIconAdd } from '@wikimedia/codex-icons';
+import { computed, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { CdxButton, CdxIcon, CdxProgressBar, CdxTable } from '@wikimedia/codex';
+import { cdxIconAdd, cdxIconClock, cdxIconFlag, cdxIconUserAvatar } from '@wikimedia/codex-icons';
 import PageHeader from '../components/PageHeader.vue';
+import FilterBar from '../components/FilterBar.vue';
 import LoadError from '../components/LoadError.vue';
 import StatusChip from '../components/StatusChip.vue';
 import OpenInvestigationDialog from '../components/OpenInvestigationDialog.vue';
 import { api } from '../lib/api.js';
 import { ago, dateTime } from '../lib/format.js';
+import { session } from '../lib/session.js';
 
+const route = useRoute();
 const router = useRouter();
 
 const rows = ref( [] );
@@ -134,13 +112,32 @@ const loading = ref( false );
 const error = ref( null );
 const showOpen = ref( false );
 
-const filters = reactive( {
-	q: '',
-	status: 'live',
-	assignee: null,
-	sort: 'updated',
-	page: 1
-} );
+const STATUSES = [ 'live', 'open', 'monitoring', 'concluded', 'closed' ];
+
+const defaultFilters = { status: 'live' };
+
+function fromRoute() {
+	const q = route.query;
+	const out = {};
+
+	if ( q.status !== 'any' ) {
+		out.status = STATUSES.includes( q.status ) ? q.status : 'live';
+	}
+	if ( q.assignee ) {
+		out.assignee = String( q.assignee );
+	}
+	if ( q.due ) {
+		out.due = true;
+	}
+
+	return out;
+}
+
+const filters = ref( fromRoute() );
+const search = ref( typeof route.query.q === 'string' ? route.query.q : '' );
+const sort = ref( typeof route.query.sort === 'string' ? route.query.sort : ( route.query.due ? 'review' : 'updated' ) );
+const page = ref( 1 );
+const team = ref( [] );
 
 const columns = [
 	{ id: 'reference', label: 'Reference', width: '9rem' },
@@ -154,16 +151,10 @@ const columns = [
 
 const statusOptions = [
 	{ value: 'live', label: 'Open and watching' },
-	{ value: '', label: 'Everything' },
 	{ value: 'open', label: 'Open' },
 	{ value: 'monitoring', label: 'Watching' },
 	{ value: 'concluded', label: 'Concluded' },
 	{ value: 'closed', label: 'Closed' }
-];
-
-const assigneeOptions = [
-	{ value: null, label: 'Anyone' },
-	{ value: 'none', label: 'Nobody yet' }
 ];
 
 const sortOptions = [
@@ -174,23 +165,76 @@ const sortOptions = [
 	{ value: 'newest', label: 'Newest first' }
 ];
 
-const dueCount = ref( 0 );
+const fields = computed( () => [
+	{ key: 'status', label: 'Status', icon: cdxIconFlag, options: statusOptions },
+	{
+		key: 'assignee',
+		label: 'Assigned to',
+		icon: cdxIconUserAvatar,
+		options: [
+			{ value: 'me', label: 'Me' },
+			{ value: 'none', label: 'Nobody yet' },
+			...team.value.filter( ( u ) => u.id !== session.user.id ).map( ( u ) => ( { value: String( u.id ), label: u.username } ) )
+		]
+	},
+	{ key: 'due', label: 'Due a second look', icon: cdxIconClock, boolean: true }
+] );
+
+async function loadTeam() {
+	try {
+		team.value = ( await api.staff() ).data.filter( ( u ) => u.active && u.flags.includes( 'ts' ) );
+	} catch ( e ) {
+		team.value = [];
+	}
+}
+
+function syncRoute() {
+	const f = filters.value;
+	const query = {};
+
+	query.status = f.status ?? 'any';
+	if ( query.status === 'live' ) {
+		delete query.status;
+	}
+	if ( f.assignee ) {
+		query.assignee = f.assignee;
+	}
+	if ( f.due ) {
+		query.due = '1';
+	}
+	if ( search.value ) {
+		query.q = search.value;
+	}
+	if ( sort.value !== 'updated' ) {
+		query.sort = sort.value;
+	}
+
+	router.replace( { query } );
+}
+
+function onFiltersChanged() {
+	page.value = 1;
+	syncRoute();
+	reload();
+}
 
 async function reload() {
 	loading.value = true;
 	error.value = null;
 
+	const f = filters.value;
 	const params = {
-		q: filters.q,
-		assignee: filters.assignee,
-		sort: filters.sort,
-		page: filters.page
+		q: search.value,
+		assignee: f.assignee === 'me' ? session.user.id : ( f.assignee ?? null ),
+		due: f.due ? 1 : null,
+		sort: sort.value,
+		page: page.value
 	};
 
-	if ( filters.status === 'live' ) {
+	if ( f.status === 'live' ) {
 		params.live = 1;
-	} else if ( filters.status ) {
-		params.status = filters.status;
+	} else if ( f.status ) {
+		params.status = f.status;
 	}
 
 	try {
@@ -204,33 +248,14 @@ async function reload() {
 	}
 }
 
-async function loadDue() {
-	try {
-		const response = await api.investigations( { due: 1, per_page: 5 } );
-		dueCount.value = response.meta.total;
-	} catch ( e ) {
-		dueCount.value = 0;
-	}
-}
-
-function showDue() {
-	filters.status = 'live';
-	filters.sort = 'review';
-	filters.page = 1;
-	reload();
-}
-
 let timer = null;
 function debouncedReload() {
 	clearTimeout( timer );
-	timer = setTimeout( () => {
-		filters.page = 1;
-		reload();
-	}, 300 );
+	timer = setTimeout( onFiltersChanged, 300 );
 }
 
-function go( page ) {
-	filters.page = page;
+function go( to ) {
+	page.value = to;
 	reload();
 }
 
@@ -240,6 +265,6 @@ function onOpened( investigation ) {
 
 onMounted( () => {
 	reload();
-	loadDue();
+	loadTeam();
 } );
 </script>

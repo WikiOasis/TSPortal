@@ -26,10 +26,24 @@ class SanctionController extends Controller
             'push_state' => ['nullable', 'string'],
             'investigation' => ['nullable', 'integer'],
             'subject' => ['nullable', 'integer'],
+            'q' => ['nullable', 'string', 'max:200'],
+            'type' => ['nullable', 'string', 'max:255'],
             'per_page' => ['nullable', 'integer', 'min:5', 'max:100'],
         ]);
 
         $query = Sanction::query()->with(['subject', 'issuer', 'investigation']);
+
+        if (! empty($filters['q'])) {
+            $term = '%'.trim($filters['q']).'%';
+
+            $query->where(fn ($q) => $q
+                ->whereHas('subject', fn ($s) => $s->where('username', 'like', $term))
+                ->orWhere('reference', 'like', $term)
+                ->orWhereHas('investigation', fn ($i) => $i->where('reference', 'like', $term)->orWhere('title', 'like', $term)));
+        }
+        if (! empty($filters['type'])) {
+            $query->whereIn('type', explode(',', $filters['type']));
+        }
 
         if (array_key_exists('active', $filters)) {
             $query->where('active', (bool) $filters['active']);
@@ -68,6 +82,7 @@ class SanctionController extends Controller
                 'wikis' => $s->wikis,
                 'where' => $s->whereItApplies(),
                 'investigation' => $s->investigation?->reference,
+                'investigation_title' => $s->investigation?->title,
                 'investigation_id' => $s->investigation_id,
             ])->all(),
             'meta' => [

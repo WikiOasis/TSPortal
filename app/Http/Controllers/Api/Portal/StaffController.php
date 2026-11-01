@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\Portal;
 
 use App\Http\Controllers\Controller;
+use App\Models\Investigation;
+use App\Models\SafetyCase;
 use App\Models\User;
 use App\Services\Safety\Audit;
 use Illuminate\Http\JsonResponse;
@@ -27,8 +29,30 @@ class StaffController extends Controller
                 'active' => $u->active,
                 'last_login' => $u->last_login_at?->toIso8601String(),
                 'public_label' => $u->publicLabel(),
+                'display_name' => $u->display_name,
+                'shown_name' => $u->shownName(),
+                'avatar_url' => $u->avatarUrl(),
             ])->all(),
             'available_flags' => User::FLAGS,
+        ]);
+    }
+
+    public function show(User $user): JsonResponse
+    {
+        return response()->json([
+            'id' => $user->id,
+            'username' => $user->username,
+            'real_name' => $user->real_name,
+            'display_name' => $user->display_name,
+            'shown_name' => $user->shownName(),
+            'bio' => $user->bio,
+            'avatar_url' => $user->avatarUrl(),
+            'flags' => $user->flags ?? [],
+            'active' => $user->active,
+            'last_login' => $user->last_login_at?->toIso8601String(),
+            'joined' => $user->created_at?->toIso8601String(),
+            'open_cases' => SafetyCase::query()->whereIn('status', SafetyCase::OPEN_STATUSES)->where('assigned_to', $user->id)->count(),
+            'open_files' => Investigation::query()->live()->where('assigned_to', $user->id)->count(),
         ]);
     }
 

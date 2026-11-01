@@ -4,30 +4,21 @@
 			title="Activity"
 		/>
 
-		<div class="ts-toolbar">
-			<cdx-field>
-				<template #label>Period</template>
-				<cdx-select v-model:selected="range" :menu-items="ranges" @update:selected="onRange" />
-			</cdx-field>
+		<div class="ts-an-bar">
+			<cdx-toggle-button-group v-model="range" :buttons="ranges" @update:model-value="setRange" />
 
-			<cdx-field v-if="range === 'custom'">
-				<template #label>From</template>
-				<cdx-text-input v-model="from" input-type="date" @change="reload" />
-			</cdx-field>
-			<cdx-field v-if="range === 'custom'">
-				<template #label>To</template>
-				<cdx-text-input v-model="to" input-type="date" @change="reload" />
-			</cdx-field>
+			<div v-if="range === 'custom'" class="ts-an-bar__dates">
+				<DatePicker v-model="from" placeholder="From" aria-label="From" :max="to || undefined" @update:model-value="reload" />
+				<span class="ts-meta">to</span>
+				<DatePicker v-model="to" placeholder="To" aria-label="To" :min="from || undefined" @update:model-value="reload" />
+			</div>
 
-			<cdx-field>
-				<template #label>Wiki</template>
-				<cdx-select v-model:selected="wiki" :menu-items="wikiOptions" @update:selected="reload" />
-			</cdx-field>
-
-			<cdx-field>
-				<template #label>Source</template>
-				<cdx-select v-model:selected="source" :menu-items="sourceOptions" @update:selected="reload" />
-			</cdx-field>
+			<FilterBar
+				v-model="filters"
+				class="ts-an-bar__filters"
+				:fields="filterFields"
+				@change="reload"
+			/>
 		</div>
 
 		<LoadError :error="error" :retry="reload" />
@@ -50,15 +41,52 @@
 				/>
 			</div>
 
-			<section class="ts-section">
-				<h2>What came in</h2>
-				<div class="ts-panel">
-					<TrendChart
-						title="Reports, messages and requests received"
-						:data="data.intake.over_time"
-						:bucket="data.period.bucket"
-					/>
+			<div class="ts-tabs" role="tablist" aria-label="Sections">
+				<button
+					v-for="t in tabs"
+					:key="t.value"
+					type="button"
+					role="tab"
+					class="ts-tabs__tab"
+					:class="{ 'ts-tabs__tab--on': tab === t.value }"
+					:aria-selected="tab === t.value"
+					@click="setTab( t.value )"
+				>
+					{{ t.label }}
+				</button>
+			</div>
+
+			<section v-if="tab === 'overview'" class="ts-section">
+				<div class="ts-charts">
+					<div class="ts-panel">
+						<TrendChart
+							title="Received"
+							:data="data.intake.over_time"
+							:bucket="data.period.bucket"
+						/>
+					</div>
+					<div class="ts-panel">
+						<TrendChart
+							title="Actions taken"
+							:data="data.outcomes.actions_over_time"
+							:bucket="data.period.bucket"
+						/>
+					</div>
+					<div class="ts-panel">
+						<BarList title="By kind" :data="typeRows" />
+					</div>
+					<div class="ts-panel">
+						<BarList
+							title="Open now, by age"
+							:data="backlogRows"
+							:limit="6"
+							empty-text="Nothing is open."
+						/>
+					</div>
 				</div>
+			</section>
+
+			<section v-if="tab === 'intake'" class="ts-section">
 
 				<div class="ts-charts">
 					<div class="ts-panel">
@@ -102,8 +130,7 @@
 				</div>
 			</section>
 
-			<section class="ts-section">
-				<h2>How it was handled</h2>
+			<section v-if="tab === 'handling'" class="ts-section">
 
 				<div class="ts-charts">
 					<div class="ts-panel">
@@ -159,8 +186,7 @@
 				</div>
 			</section>
 
-			<section class="ts-section">
-				<h2>What was done</h2>
+			<section v-if="tab === 'outcomes'" class="ts-section">
 				<div class="ts-charts">
 					<div class="ts-panel">
 						<TrendChart
@@ -189,7 +215,7 @@
 				</div>
 			</section>
 
-			<section class="ts-section">
+			<section v-if="tab === 'outcomes'" class="ts-section">
 				<h2>Appeals</h2>
 				<div class="ts-charts">
 					<div class="ts-panel">
@@ -247,7 +273,7 @@
 				</div>
 			</section>
 
-			<section class="ts-section">
+			<section v-if="tab === 'handling'" class="ts-section">
 				<h2>Who is carrying it</h2>
 				<div class="ts-panel ts-scroll">
 					<cdx-table
@@ -261,8 +287,7 @@
 				</div>
 			</section>
 
-			<section class="ts-section">
-				<h2>CheckUser</h2>
+			<section v-if="tab === 'checkuser'" class="ts-section">
 
 				<cdx-message v-if="!data.options.checkuser_enabled" type="warning">
 					No wiki is reporting CheckUser activity.
@@ -331,10 +356,11 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import {
-	CdxField, CdxMessage, CdxProgressBar, CdxSelect, CdxTable, CdxTextInput
-} from '@wikimedia/codex';
+import { CdxMessage, CdxProgressBar, CdxTable, CdxToggleButtonGroup } from '@wikimedia/codex';
+import { cdxIconArticle, cdxIconRobot } from '@wikimedia/codex-icons';
 import PageHeader from '../components/PageHeader.vue';
+import FilterBar from '../components/FilterBar.vue';
+import DatePicker from '../components/DatePicker.vue';
 import LoadError from '../components/LoadError.vue';
 import StatTile from '../components/StatTile.vue';
 import TrendChart from '../components/TrendChart.vue';
@@ -356,31 +382,49 @@ const error = ref( null );
 const range = ref( route.query.range ?? '90' );
 const from = ref( route.query.from ?? '' );
 const to = ref( route.query.to ?? '' );
-const wiki = ref( route.query.wiki ?? '' );
-const source = ref( route.query.source ?? '' );
+const filters = ref( Object.fromEntries( [
+	[ 'wiki', route.query.wiki ],
+	[ 'source', route.query.source ]
+].filter( ( [ , v ] ) => v ) ) );
 
-const ranges = [
-	{ value: '30', label: 'Last 30 days' },
-	{ value: '90', label: 'Last quarter' },
-	{ value: '180', label: 'Last six months' },
-	{ value: '365', label: 'Last year' },
-	{ value: 'custom', label: 'Choose dates' }
-];
-
-const wikiOptions = computed( () => [
-	{ value: '', label: 'Every wiki' },
-	...( data.value?.options.wikis ?? [] ).map( ( w ) => ( { value: w, label: w } ) )
-] );
+const TABS = [ 'overview', 'intake', 'handling', 'outcomes', 'checkuser' ];
+const tab = ref( TABS.includes( route.query.tab ) ? route.query.tab : 'overview' );
 
 const SOURCE_LABELS = {
 	people: 'Filed by people',
 	automated: 'Raised by automated scanning'
 };
 
-const sourceOptions = [
-	{ value: '', label: 'Every source' },
-	...Object.entries( SOURCE_LABELS ).map( ( [ value, label ] ) => ( { value, label } ) )
+const tabs = computed( () => [
+	{ value: 'overview', label: 'Overview' },
+	{ value: 'intake', label: 'What came in' },
+	{ value: 'handling', label: 'How it was handled' },
+	{ value: 'outcomes', label: 'Actions and appeals' },
+	...( data.value?.options.checkuser_enabled ? [ { value: 'checkuser', label: 'CheckUser' } ] : [] )
+] );
+
+const ranges = [
+	{ value: '30', label: '30 days' },
+	{ value: '90', label: 'Quarter' },
+	{ value: '180', label: '6 months' },
+	{ value: '365', label: 'Year' },
+	{ value: 'custom', label: 'Custom' }
 ];
+
+const filterFields = computed( () => [
+	{
+		key: 'wiki',
+		label: 'Wiki',
+		icon: cdxIconArticle,
+		options: ( data.value?.options.wikis ?? [] ).map( ( w ) => ( { value: w, label: w } ) )
+	},
+	{
+		key: 'source',
+		label: 'Source',
+		icon: cdxIconRobot,
+		options: Object.entries( SOURCE_LABELS ).map( ( [ value, label ] ) => ( { value, label } ) )
+	}
+] );
 
 const sourceRows = computed( () => label( data.value?.intake.by_source, SOURCE_LABELS ) );
 
@@ -472,36 +516,37 @@ function label( rows, labels ) {
 	} ) );
 }
 
-function onRange( value ) {
+function setRange( value ) {
 	if ( value !== 'custom' ) {
 		from.value = '';
 		to.value = '';
+		reload();
 	}
-	reload();
+}
+
+function setTab( value ) {
+	tab.value = value;
+	router.replace( { query: { ...route.query, tab: value === 'overview' ? undefined : value } } );
 }
 
 function params() {
+	const base = { wiki: filters.value.wiki || undefined, source: filters.value.source || undefined };
+
 	if ( range.value === 'custom' ) {
-		return {
-			from: from.value || undefined,
-			to: to.value || undefined,
-			wiki: wiki.value || undefined,
-			source: source.value || undefined
-		};
+		return { from: from.value || undefined, to: to.value || undefined, ...base };
 	}
 
 	const end = new Date();
 	const start = new Date( end.getTime() - ( Number( range.value ) - 1 ) * 86400000 );
 
-	return {
-		from: start.toISOString().slice( 0, 10 ),
-		to: end.toISOString().slice( 0, 10 ),
-		wiki: wiki.value || undefined,
-		source: source.value || undefined
-	};
+	return { from: start.toISOString().slice( 0, 10 ), to: end.toISOString().slice( 0, 10 ), ...base };
 }
 
 async function reload() {
+	if ( range.value === 'custom' && !( from.value && to.value ) && data.value ) {
+		return;
+	}
+
 	loading.value = true;
 	error.value = null;
 
@@ -509,12 +554,16 @@ async function reload() {
 		range: range.value,
 		from: from.value || undefined,
 		to: to.value || undefined,
-		wiki: wiki.value || undefined,
-		source: source.value || undefined
+		wiki: filters.value.wiki || undefined,
+		source: filters.value.source || undefined,
+		tab: tab.value === 'overview' ? undefined : tab.value
 	} } );
 
 	try {
 		data.value = await api.analytics( params() );
+		if ( !tabs.value.some( ( t ) => t.value === tab.value ) ) {
+			tab.value = 'overview';
+		}
 	} catch ( e ) {
 		error.value = e;
 	} finally {

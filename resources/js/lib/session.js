@@ -1,5 +1,6 @@
 import { reactive } from 'vue';
 import { api } from './api.js';
+import { hydratePreferences } from './preferences.js';
 
 export const session = reactive( {
 	loaded: false,
@@ -22,6 +23,7 @@ export const session = reactive( {
 		try {
 			const data = await api.session();
 			this.user = data.user;
+			hydratePreferences( data.user );
 			this.wiki = data.wiki ?? {};
 		} catch ( e ) {
 			this.user = null;

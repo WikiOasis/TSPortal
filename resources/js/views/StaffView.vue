@@ -2,63 +2,93 @@
 	<main class="ts-page">
 		<PageHeader
 			title="Team"
+			:subtitle="members.length ? `${ members.length } ${ members.length === 1 ? 'person has' : 'people have' } access` : ''"
 		/>
 
-		<cdx-message type="notice" :allow-user-dismiss="false">
-			A flag from a wiki group comes back on its own at the next sign-in. A flag
-			granted here is a decision and stays until it is taken back here.
-		</cdx-message>
-
 		<LoadError :error="error" :retry="load" />
-		<cdx-progress-bar v-if="loading" aria-label="Loading the team" />
+		<cdx-progress-bar v-if="loading && !people.length" aria-label="Loading the team" />
 
-		<div class="ts-stack">
-			<div v-for="person in people" :key="person.id" class="ts-panel">
-				<div class="ts-page__head" style="margin-bottom: 0.5rem;">
-					<div>
-						<strong>{{ person.username }}</strong>
-						<span v-if="person.real_name" class="ts-meta"> · {{ person.real_name }}</span>
-						<div class="ts-meta">
-							Shown to reporters as “{{ person.public_label }}” ·
-							{{ person.last_login ? `last in ${ ago( person.last_login ) }` : 'has never signed in' }}
-						</div>
+		<ul class="ts-team">
+			<li v-for="person in members" :key="person.id" class="ts-team__row">
+				<UserAvatar :name="person.username" :url="person.avatar_url" size="2.25rem" />
+
+				<div class="ts-team__who">
+					<router-link :to="{ name: 'profile', params: { id: person.id } }"><strong>{{ person.shown_name || person.username }}</strong></router-link>
+					<span class="ts-meta"> · {{ person.username }}</span>
+					<span v-if="person.id === session.user.id" class="ts-meta"> (you)</span>
+					<div class="ts-meta">
+						{{ person.last_login ? `Last in ${ ago( person.last_login ) }` : 'Never signed in' }}
 					</div>
-					<cdx-info-chip :status="person.active ? 'success' : 'error'">
-						{{ person.active ? 'Active' : 'Deactivated' }}
-					</cdx-info-chip>
 				</div>
 
-				<div class="ts-inline">
-					<cdx-checkbox
+				<div class="ts-team__flags" role="group" :aria-label="`Access for ${ person.username }`">
+					<button
 						v-for="flag in availableFlags"
 						:key="flag"
-						:model-value="person.granted_flags.includes( flag )"
-						:disabled="person.id === session.user.id || saving === person.id"
-						@update:model-value="( on ) => toggle( person, flag, on )"
+						type="button"
+						class="ts-team__flag"
+						:class="{ 'ts-team__flag--on': person.flags.includes( flag ) }"
+						:aria-pressed="person.granted_flags.includes( flag )"
+						:disabled="person.id === session.user.id || saving === person.id || !session.can( 'user-manager' )"
+						:title="flagTitle( person, flag )"
+						@click="toggle( person, flag, !person.granted_flags.includes( flag ) )"
 					>
 						{{ flag }}
-						<span v-if="fromGroups( person ).includes( flag )" class="ts-meta">(also from an identity group)</span>
-					</cdx-checkbox>
+						<span v-if="fromGroups( person ).includes( flag )" class="ts-team__flag-mark" aria-label="from an identity group">•</span>
+					</button>
 				</div>
 
-				<div class="ts-meta" style="margin-top: 0.5rem;">
-					In force: {{ person.flags.join( ', ' ) || 'nothing' }}
-					<template v-if="person.idp_groups.length"> · identity groups: {{ person.idp_groups.join( ', ' ) }}</template>
-				</div>
+				<cdx-button
+					v-if="person.id !== session.user.id && session.can( 'user-manager' )"
+					weight="quiet"
+					action="destructive"
+					size="small"
+					:disabled="saving === person.id"
+					:aria-label="`Remove ${ person.username } from the team`"
+					@click="remove( person )"
+				>
+					<cdx-icon :icon="cdxIconTrash" size="small" />
+					Remove
+				</cdx-button>
+				<span v-else class="ts-team__spacer" />
+			</li>
+		</ul>
 
-				<p v-if="person.id === session.user.id" class="ts-meta">
-					You cannot change your own flags. Ask someone else holding
-					<code>user-manager</code>.
-				</p>
-			</div>
-		</div>
+		<p v-if="!members.length && !loading" class="ts-empty-state">Nobody has access.</p>
+
+		<details v-if="removed.length" class="ts-team__removed">
+			<summary>Removed <span class="ts-group-label__count">{{ removed.length }}</span></summary>
+			<ul class="ts-team">
+				<li v-for="person in removed" :key="person.id" class="ts-team__row ts-team__row--removed">
+					<span class="ts-team__avatar" aria-hidden="true">{{ initial( person ) }}</span>
+					<div class="ts-team__who">
+						<strong>{{ person.username }}</strong>
+						<div class="ts-meta">
+							{{ person.real_name || 'No name on file' }}
+							· {{ person.last_login ? `last in ${ ago( person.last_login ) }` : 'never signed in' }}
+						</div>
+					</div>
+					<span class="ts-team__flags" />
+					<cdx-button
+						v-if="session.can( 'user-manager' )"
+						size="small"
+						:disabled="saving === person.id"
+						@click="restore( person )"
+					>
+						Restore
+					</cdx-button>
+				</li>
+			</ul>
+		</details>
 	</main>
 </template>
 
 <script setup>
-import { inject, onMounted, ref } from 'vue';
-import { CdxCheckbox, CdxInfoChip, CdxMessage, CdxProgressBar } from '@wikimedia/codex';
+import { computed, inject, onMounted, ref } from 'vue';
+import { CdxButton, CdxIcon, CdxProgressBar } from '@wikimedia/codex';
+import { cdxIconTrash } from '@wikimedia/codex-icons';
 import PageHeader from '../components/PageHeader.vue';
+import UserAvatar from '../components/UserAvatar.vue';
 import LoadError from '../components/LoadError.vue';
 import { api } from '../lib/api.js';
 import { ago } from '../lib/format.js';
@@ -72,8 +102,25 @@ const loading = ref( false );
 const error = ref( null );
 const saving = ref( null );
 
+const members = computed( () => people.value.filter( ( p ) => p.active ) );
+const removed = computed( () => people.value.filter( ( p ) => !p.active ) );
+
+function initial( person ) {
+	return ( person.username ?? '?' ).slice( 0, 1 ).toUpperCase();
+}
+
 function fromGroups( person ) {
 	return person.from_groups ?? [];
+}
+
+function flagTitle( person, flag ) {
+	if ( person.id === session.user.id ) {
+		return 'You cannot change your own access.';
+	}
+	if ( fromGroups( person ).includes( flag ) ) {
+		return 'Also given by an identity group, which comes back at their next sign-in.';
+	}
+	return person.granted_flags.includes( flag ) ? `Take ${ flag } away` : `Give ${ flag }`;
 }
 
 async function load() {
@@ -90,23 +137,34 @@ async function load() {
 	}
 }
 
-async function toggle( person, flag, on ) {
+async function save( person, body, said ) {
 	saving.value = person.id;
 
+	try {
+		await api.updateStaff( person.id, body );
+		notify( said );
+	} catch ( e ) {
+		notify( e.message, 'error' );
+	} finally {
+		saving.value = null;
+		await load();
+	}
+}
+
+function toggle( person, flag, on ) {
 	const granted = on
 		? [ ...person.granted_flags, flag ]
 		: person.granted_flags.filter( ( f ) => f !== flag );
 
-	try {
-		await api.updateStaff( person.id, { granted_flags: granted } );
-		notify( `${ person.username }: ${ flag } ${ on ? 'granted' : 'removed' }.` );
-		await load();
-	} catch ( e ) {
-		notify( e.message, 'error' );
-		await load();
-	} finally {
-		saving.value = null;
-	}
+	return save( person, { granted_flags: granted }, `${ person.username }: ${ flag } ${ on ? 'granted' : 'removed' }.` );
+}
+
+function remove( person ) {
+	return save( person, { active: false, granted_flags: [] }, `${ person.username } removed from the team.` );
+}
+
+function restore( person ) {
+	return save( person, { active: true }, `${ person.username } restored. Their access flags were cleared, so grant what they need.` );
 }
 
 onMounted( load );

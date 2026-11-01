@@ -18,7 +18,7 @@ export function sections() {
 		{ name: 'transparency', label: 'Transparency', icon: cdxIconArticle, match: [ 'transparency', 'transparency-report' ], words: 'reports published' },
 		{ name: 'audit', label: 'Audit log', icon: cdxIconHistory, match: [ 'audit' ], words: 'history log' },
 		...( session.can( 'user-manager' )
-			? [ { name: 'staff', label: 'Team', icon: cdxIconUserGroup, match: [ 'staff' ], words: 'staff people members' } ]
+			? [ { name: 'staff', label: 'Team', icon: cdxIconUserGroup, match: [ 'staff', 'profile' ], words: 'staff people members' } ]
 			: [] )
 	];
 }
