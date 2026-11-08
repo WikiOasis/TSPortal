@@ -11,7 +11,7 @@
 				<span class="ts-meta ts-cu-card__when" :title="dateTime( row.updated )">{{ ago( row.updated ) }}</span>
 			</div>
 			<h2 class="ts-cu-card__subject">{{ row.subject }}</h2>
-			<p class="ts-meta">
+			<p class="ts-meta ts-cu-card__assignee">
 				{{ shown?.assignee ? `With ${ shown.assignee.username }` : ( row.assignee ? `With ${ row.assignee }` : 'Unassigned' ) }}
 			</p>
 		</header>

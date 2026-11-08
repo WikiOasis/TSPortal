@@ -10,7 +10,7 @@
 
 		<ul class="ts-team">
 			<li v-for="person in members" :key="person.id" class="ts-team__row">
-				<UserAvatar :name="person.username" :url="person.avatar_url" size="2.25rem" />
+				<UserAvatar :name="person.shown_name || person.username" :url="person.avatar_url" size="2.25rem" />
 
 				<div class="ts-team__who">
 					<router-link :to="{ name: 'profile', params: { id: person.id } }"><strong>{{ person.shown_name || person.username }}</strong></router-link>

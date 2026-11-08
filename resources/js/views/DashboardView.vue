@@ -183,7 +183,7 @@ const plural = ( n, one, many = `${ one }s` ) => `${ n } ${ n === 1 ? one : many
 const greeting = computed( () => {
 	const hour = new Date().getHours();
 	const part = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
-	return `Good ${ part }, ${ session.user.username }`;
+	return `Good ${ part }, ${ session.user.shown_name || session.user.username }`;
 } );
 
 const summary = computed( () => {

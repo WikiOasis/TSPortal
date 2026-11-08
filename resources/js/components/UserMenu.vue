@@ -5,15 +5,15 @@
 			class="ts-avatar"
 			:aria-expanded="open"
 			aria-haspopup="menu"
-			:aria-label="`Account menu for ${ session.user.username }`"
+			:aria-label="`Account menu for ${ session.user.shown_name || session.user.username }`"
 			@click="open = !open"
 		>
-			<UserAvatar :name="session.user.username" :url="session.user.avatar_url" size="100%" />
+			<UserAvatar :name="session.user.shown_name || session.user.username" :url="session.user.avatar_url" size="100%" />
 		</button>
 
 		<div v-if="open" class="ts-usermenu__pop" role="menu" @keydown.esc="close">
 			<div class="ts-usermenu__who">
-				<UserAvatar :name="session.user.username" :url="session.user.avatar_url" size="2.5rem" />
+				<UserAvatar :name="session.user.shown_name || session.user.username" :url="session.user.avatar_url" size="2.5rem" />
 				<div>
 					<strong>{{ session.user.shown_name || session.user.username }}</strong>
 					<div class="ts-meta">{{ session.user.username }}</div>

@@ -2,12 +2,14 @@
 	<main class="ts-page ts-catchup">
 		<PageHeader
 			title="Catch up"
-			:subtitle="deck.length ? `${ deck.length } remaining` : 'You are all caught up'"
+			:subtitle="deck.length ? `${ Math.max( deck.length, total - cleared ) } to go` : 'You are all caught up'"
 		>
 			<template #actions>
-				<cdx-button :disabled="!deck.length || busyAll" @click="readAll">
-					<cdx-icon :icon="cdxIconCheckAll" size="small" />
-					Mark all read
+				<cdx-button weight="quiet" :disabled="!undoable || leaving" aria-label="Undo" title="Undo the last one" @click="undo">
+					<cdx-icon :icon="cdxIconUndo" />
+				</cdx-button>
+				<cdx-button weight="quiet" :disabled="!deck.length || busyAll" aria-label="Mark all read" title="Mark all read" @click="readAll">
+					<cdx-icon :icon="cdxIconCheckAll" />
 				</cdx-button>
 			</template>
 		</PageHeader>
@@ -62,10 +64,6 @@
 					<cdx-icon :icon="cdxIconPrevious" size="small" />
 					Leave
 				</cdx-button>
-				<cdx-button weight="quiet" :disabled="!undoable || leaving" @click="undo">
-					<cdx-icon :icon="cdxIconUndo" size="small" />
-					Undo
-				</cdx-button>
 				<cdx-button action="progressive" weight="primary" :disabled="leaving" aria-label="Mark read" @click="commit( 'right' )">
 					Mark read
 					<cdx-icon :icon="cdxIconNext" size="small" />
@@ -104,6 +102,7 @@ const loading = ref( false );
 const error = ref( null );
 const busyAll = ref( false );
 const cleared = ref( 0 );
+const total = ref( 0 );
 const undoable = ref( null );
 const team = ref( [] );
 
@@ -143,6 +142,10 @@ async function fetchPage( n ) {
 		const known = new Set( deck.value.map( ( r ) => r.id ) );
 		deck.value = [ ...deck.value, ...response.data.filter( ( r ) => !known.has( r.id ) ) ];
 		page.value = { current: response.meta.current_page, last: response.meta.last_page };
+
+		if ( n === 1 ) {
+			total.value = response.meta.unread + cleared.value;
+		}
 	} catch ( e ) {
 		error.value = e;
 	} finally {

@@ -12,7 +12,7 @@
 			<cdx-tab name="profile" label="Profile">
 				<div class="ts-settings__pane">
 					<div class="ts-profile">
-						<UserAvatar :name="session.user.username" :url="session.user.avatar_url" size="5rem" />
+						<UserAvatar :name="session.user.shown_name || session.user.username" :url="session.user.avatar_url" size="5rem" />
 						<div class="ts-profile__text">
 							<strong>{{ session.user.username }}</strong>
 							<span v-if="session.user.real_name" class="ts-meta">{{ session.user.real_name }}</span>

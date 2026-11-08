@@ -8,7 +8,7 @@
 			<div v-else-if="glass" class="ts-banner ts-banner--empty" aria-hidden="true" />
 
 			<div class="ts-profile-card" :class="{ 'ts-profile-card--banner': person.banner_url || glass }">
-				<UserAvatar :name="person.username" :url="person.avatar_url" size="6rem" />
+				<UserAvatar :name="person.shown_name || person.username" :url="person.avatar_url" size="6rem" />
 
 				<div class="ts-profile-card__main">
 					<div class="ts-profile-card__name">
