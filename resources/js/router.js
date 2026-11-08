@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { session } from './lib/session.js';
 
 import DashboardView from './views/DashboardView.vue';
+import CatchUpView from './views/CatchUpView.vue';
 import QueueView from './views/QueueView.vue';
 import CaseView from './views/CaseView.vue';
 import AutomationView from './views/AutomationView.vue';
@@ -26,6 +27,7 @@ import NotFoundView from './views/NotFoundView.vue';
 const routes = [
 	{ path: '/', name: 'dashboard', component: DashboardView, meta: { title: 'Dashboard' } },
 	{ path: '/queue', name: 'queue', component: QueueView, meta: { title: 'Queue' } },
+	{ path: '/catch-up', name: 'catch-up', component: CatchUpView, meta: { title: 'Catch up' } },
 	{ path: '/automation', name: 'automation', component: AutomationView, meta: { title: 'Automation' } },
 	{ path: '/automated', redirect: ( to ) => ( { name: 'automation', query: to.query } ) },
 	{ path: '/cases/:id', name: 'case', component: CaseView, props: true, meta: { title: 'Case' } },

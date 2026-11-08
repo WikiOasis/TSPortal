@@ -180,9 +180,12 @@ Route::prefix('portal')->name('portal.')->group(function () {
         Route::put('/me/preferences', [Portal\MeController::class, 'update'])->name('me.update');
         Route::post('/me/avatar', [Portal\MeController::class, 'storeAvatar'])->name('me.avatar.store');
         Route::delete('/me/avatar', [Portal\MeController::class, 'destroyAvatar'])->name('me.avatar.destroy');
+        Route::post('/me/banner', [Portal\MeController::class, 'storeBanner'])->name('me.banner.store');
+        Route::delete('/me/banner', [Portal\MeController::class, 'destroyBanner'])->name('me.banner.destroy');
         Route::post('/me/backgrounds', [Portal\MeController::class, 'storeBackground'])->name('me.backgrounds.store');
         Route::delete('/me/backgrounds/{name}', [Portal\MeController::class, 'destroyBackground'])->name('me.backgrounds.destroy');
         Route::get('/backgrounds/{name}', [Portal\MeController::class, 'background'])->name('backgrounds.show');
+        Route::get('/banners/{user}', [Portal\MeController::class, 'banner'])->name('banners.show');
         Route::get('/avatars/{user}', [Portal\MeController::class, 'avatar'])->name('avatars.show');
 
         Route::get('/notifications', [Portal\NotificationController::class, 'index'])->name('notifications.index');
@@ -194,6 +197,11 @@ Route::prefix('portal')->name('portal.')->group(function () {
         Route::delete('/subscriptions/{type}/{id}', [Portal\SubscriptionController::class, 'destroy'])->whereNumber('id')->name('subscriptions.destroy');
 
         Route::get('/audit', [Portal\AuditController::class, 'index'])->name('audit.index');
+
+        Route::get('/catch-up', [Portal\CatchUpController::class, 'index'])->name('catch-up.index');
+        Route::put('/catch-up/{case}', [Portal\CatchUpController::class, 'read'])->name('catch-up.read');
+        Route::delete('/catch-up/{case}', [Portal\CatchUpController::class, 'unread'])->name('catch-up.unread');
+        Route::post('/catch-up/read', [Portal\CatchUpController::class, 'readAll'])->name('catch-up.read-all');
 
         Route::get('/staff', [Portal\StaffController::class, 'index'])->name('staff.index');
         Route::get('/staff/{user}', [Portal\StaffController::class, 'show'])->name('staff.show');

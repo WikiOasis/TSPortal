@@ -1,5 +1,5 @@
 import {
-	cdxIconArticle, cdxIconBlock, cdxIconChart, cdxIconFlag, cdxIconHistory, cdxIconRobot,
+	cdxIconArticle, cdxIconBlock, cdxIconChart, cdxIconEye, cdxIconFlag, cdxIconHistory, cdxIconRobot,
 	cdxIconSearch, cdxIconTrash, cdxIconUserAvatar, cdxIconUserGroup, cdxIconViewDetails
 } from '@wikimedia/codex-icons';
 import { session } from './session.js';
@@ -8,6 +8,7 @@ export function sections() {
 	return [
 		{ name: 'dashboard', label: 'Dashboard', icon: cdxIconViewDetails, match: [ 'dashboard' ], words: 'home overview' },
 		{ name: 'queue', label: 'Queue', icon: cdxIconFlag, match: [ 'queue', 'case' ], words: 'reports cases inbox', kind: 'case' },
+		{ name: 'catch-up', label: 'Catch up', icon: cdxIconEye, match: [ 'catch-up' ], words: 'unread new swipe acknowledge triage mobile' },
 		{ name: 'automation', label: 'Automation', icon: cdxIconRobot, match: [ 'automation' ], words: 'automated flags review ai' },
 		{ name: 'investigations', label: 'Investigations', icon: cdxIconUserGroup, match: [ 'investigations', 'investigation' ], words: 'files', kind: 'investigation' },
 		{ name: 'subjects', label: 'Accounts', icon: cdxIconUserAvatar, match: [ 'subjects', 'subject' ], words: 'users subjects people', kind: 'subject' },

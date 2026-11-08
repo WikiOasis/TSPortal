@@ -122,6 +122,7 @@
       <excludeFolder url="file://$MODULE_DIR$/storage/app" />
       <excludeFolder url="file://$MODULE_DIR$/storage/framework" />
       <excludeFolder url="file://$MODULE_DIR$/storage/pail" />
+      <excludeFolder url="file://$MODULE_DIR$/storage/sandbox" />
     </content>
     <orderEntry type="sourceFolder" forTests="false" />
   </component>

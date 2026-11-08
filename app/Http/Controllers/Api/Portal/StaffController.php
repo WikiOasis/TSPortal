@@ -47,6 +47,8 @@ class StaffController extends Controller
             'shown_name' => $user->shownName(),
             'bio' => $user->bio,
             'avatar_url' => $user->avatarUrl(),
+            'banner_url' => $user->bannerUrl(),
+            'profile_theme' => $user->profile_theme,
             'flags' => $user->flags ?? [],
             'active' => $user->active,
             'last_login' => $user->last_login_at?->toIso8601String(),

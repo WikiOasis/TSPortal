@@ -237,6 +237,67 @@ class DataRemovalTest extends TestCase
     }
 
     #[Test]
+    public function finishing_an_erasure_is_recorded_by_the_system_with_a_comment(): void
+    {
+        $worker = $this->caseworker();
+        $worker->forceFill(['display_name' => 'Casey'])->save();
+
+        $case = SafetyCase::create([
+            'reference' => SafetyCase::nextReference('Data'),
+            'type' => SafetyCase::TYPE_DATA,
+            'subject_line' => 'Please erase me',
+            'status' => SafetyCase::STATUS_RECEIVED,
+            'reporter_subject_id' => Subject::forUsername('Ordinary Sandpiper', 45)->id,
+        ]);
+
+        $removal = $this->requested();
+        $removal->forceFill([
+            'state' => DataRemoval::STATE_SCRUBBING,
+            'case_id' => $case->id,
+            'approved_by' => $worker->id,
+            'approved_at' => now(),
+            'result' => ['pending' => ['onewiki'], 'finished' => []],
+        ])->save();
+
+        $this->actingAs($worker);
+        app(DataRemovalService::class)->progress($removal, 'onewiki', true);
+
+        $timeline = collect(app(\App\Services\Safety\Timeline::class)->forCase($case->refresh()));
+
+        $status = $timeline->firstWhere('subkind', 'case.status');
+        $this->assertSame('System', $status['actor']);
+        $this->assertSame('action-taken', $status['meta']['to']);
+
+        $note = $timeline->firstWhere('body', 'The erasure was finished.');
+        $this->assertNotNull($note);
+        $this->assertSame('System', $note['actor']);
+        $this->assertSame('internal', $note['visibility']);
+    }
+
+    #[Test]
+    public function people_are_shown_by_the_name_they_chose(): void
+    {
+        $worker = $this->caseworker();
+        $worker->forceFill(['display_name' => 'Casey'])->save();
+
+        $case = SafetyCase::create([
+            'reference' => SafetyCase::nextReference('Data'),
+            'type' => SafetyCase::TYPE_DATA,
+            'subject_line' => 'Hello',
+            'status' => SafetyCase::STATUS_RECEIVED,
+            'reporter_subject_id' => Subject::forUsername('Ordinary Sandpiper', 45)->id,
+        ]);
+
+        $this->actingAs($worker);
+        app(\App\Services\Safety\CaseService::class)->comment($case, 'Looking now.', 'internal', $worker);
+
+        $entry = collect(app(\App\Services\Safety\Timeline::class)->forCase($case->refresh()))
+            ->firstWhere('body', 'Looking now.');
+
+        $this->assertSame('Casey', $entry['actor']);
+    }
+
+    #[Test]
     public function it_is_only_done_when_every_wiki_has_reported_back(): void
     {
         $removal = $this->requested();

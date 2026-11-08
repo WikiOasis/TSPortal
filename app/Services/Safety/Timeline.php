@@ -11,6 +11,7 @@ use App\Models\Investigation;
 use App\Models\InvestigationNote;
 use App\Models\SafetyCase;
 use App\Models\Sanction;
+use App\Models\User;
 use Illuminate\Support\Collection;
 
 final class Timeline
@@ -25,6 +26,23 @@ final class Timeline
         'case.duplicate-merged',
         'case.duplicate-received',
     ];
+
+    /**
+     * @return array{actor: ?string, actor_avatar: ?string}
+     */
+    private static function who(?User $user, ?string $fallback = null): array
+    {
+        if ($user === null) {
+            return ['actor' => self::label($fallback), 'actor_avatar' => null];
+        }
+
+        return ['actor' => $user->shownName(), 'actor_avatar' => $user->avatarUrl()];
+    }
+
+    private static function label(?string $label): ?string
+    {
+        return $label === null ? null : (strtolower($label) === 'system' ? 'System' : $label);
+    }
 
     /**
      * @return list<array<string, mixed>>
@@ -67,7 +85,7 @@ final class Timeline
             $entries->push([
                 'at' => $case->investigation->opened_at?->toIso8601String(),
                 'kind' => 'investigation',
-                'actor' => $case->investigation->opener?->username,
+                ...self::who($case->investigation->opener),
                 'title' => sprintf('Became part of investigation %s', $case->investigation->reference),
                 'body' => $case->investigation->title,
                 'visibility' => 'internal',
@@ -98,7 +116,7 @@ final class Timeline
             $entries[] = [
                 'at' => $case->duplicate_marked_at?->toIso8601String(),
                 'kind' => 'duplicate',
-                'actor' => $case->duplicateMarker?->username,
+                ...self::who($case->duplicateMarker),
                 'title' => sprintf('Merged into %s as a duplicate', $case->duplicateOf->reference),
                 'body' => $case->duplicate_note,
                 'visibility' => 'internal',
@@ -144,7 +162,7 @@ final class Timeline
         $entries->push([
             'at' => $investigation->opened_at?->toIso8601String(),
             'kind' => 'opened',
-            'actor' => $investigation->opener?->username,
+            ...self::who($investigation->opener),
             'actor_id' => $investigation->opened_by,
             'title' => 'Investigation opened',
             'body' => $investigation->premise,
@@ -157,7 +175,7 @@ final class Timeline
                 'at' => $note->created_at?->toIso8601String(),
                 'kind' => 'note',
                 'subkind' => $note->kind,
-                'actor' => $note->author?->username,
+                ...self::who($note->author),
                 'actor_id' => $note->author_id,
                 'title' => $this->noteTitle($note),
                 'body' => $note->body,
@@ -195,7 +213,7 @@ final class Timeline
             $entries->push([
                 'at' => $investigation->closed_at->toIso8601String(),
                 'kind' => 'concluded',
-                'actor' => $investigation->closer?->username,
+                ...self::who($investigation->closer),
                 'actor_id' => $investigation->closed_by,
                 'title' => $investigation->status === Investigation::STATUS_CONCLUDED
                     ? sprintf('Concluded — %s', str_replace('-', ' ', (string) $investigation->outcome))
@@ -227,7 +245,7 @@ final class Timeline
                 'at' => $comment->created_at?->toIso8601String(),
                 'kind' => 'status-note',
                 'subkind' => $comment->author_type,
-                'actor' => $comment->author?->username ?? $comment->author_label,
+                ...self::who($comment->author, $comment->author_label),
                 'public_actor' => $publicActor,
                 'actor_id' => $comment->author_user_id,
                 'title' => $comment->isPublic() ? 'Told the reporter' : 'Recorded',
@@ -241,12 +259,12 @@ final class Timeline
             'at' => $comment->created_at?->toIso8601String(),
             'kind' => $system ? 'system' : 'comment',
             'subkind' => $comment->author_type,
-            'actor' => $comment->author?->username ?? $comment->author_label ?? ($system ? 'The portal' : null),
+            ...self::who($comment->author, $comment->author_label ?? ($system ? 'System' : null)),
             'public_actor' => $publicActor,
             'title' => match ($comment->author_type) {
                 CaseComment::AUTHOR_SUBJECT => 'The reporter wrote',
                 CaseComment::AUTHOR_STAFF => $comment->isPublic() ? 'Replied to the reporter' : 'Internal note',
-                default => 'Recorded',
+                default => 'Added a note',
             },
             'body' => $comment->body,
             'visibility' => $comment->visibility,
@@ -265,7 +283,7 @@ final class Timeline
         $entries = [[
             'at' => $sanction->issued_at?->toIso8601String(),
             'kind' => 'action',
-            'actor' => $sanction->issuer?->username,
+            ...self::who($sanction->issuer),
             'actor_id' => $sanction->issued_by,
             'title' => sprintf('%s — %s', $sanction->label, $sanction->reference),
             'body' => $sanction->reason,
@@ -286,7 +304,7 @@ final class Timeline
             $entries[] = [
                 'at' => $sanction->lifted_at->toIso8601String(),
                 'kind' => 'action-lifted',
-                'actor' => $sanction->lifter?->username,
+                ...self::who($sanction->lifter),
                 'title' => sprintf('%s lifted', $sanction->reference),
                 'body' => $sanction->lift_reason,
                 'visibility' => 'public',
@@ -313,7 +331,7 @@ final class Timeline
         return [
             'at' => $removal->created_at?->toIso8601String(),
             'kind' => 'data-removal',
-            'actor' => $removal->requester?->username,
+            ...self::who($removal->requester),
             'title' => sprintf('Data removal %s — %s', $removal->reference, $removal->label()),
             'body' => $removal->reason,
             'visibility' => 'internal',
@@ -343,7 +361,7 @@ final class Timeline
                 'at' => $log->created_at?->toIso8601String(),
                 'kind' => 'audit',
                 'subkind' => $log->action,
-                'actor' => $log->user?->username ?? $log->actor_label ?? 'the portal',
+                ...self::who($log->user, $log->actor_label ?? 'System'),
                 'actor_id' => $log->user_id,
                 'title' => self::titleFor($log),
                 'body' => null,
@@ -419,12 +437,21 @@ final class Timeline
             'investigation.closed' => 'Closed',
             'sanction.lifted' => 'Action lifted',
             'sanction.expired' => 'Action expired',
-            'data-removal.approved' => 'Data removal approved',
-            'data-removal.refused' => 'Data removal refused',
-            'data-removal.sent' => 'Data removal sent to the wikis',
-            'data-removal.completed' => 'Data removal finished',
-            'data-removal.failed' => 'Data removal could not be completed',
-            default => $log->action,
+            'data-removal.approved' => 'Approved the data removal',
+            'data-removal.started' => 'Started the data removal',
+            'data-removal.refused' => 'Refused the data removal',
+            'data-removal.renamed' => 'Renamed the account to an anonymous identifier',
+            'data-removal.sent' => 'Sent the data removal to the wikis',
+            'data-removal.completed' => 'Finished the data removal',
+            'data-removal.failed' => 'Could not complete the data removal',
+            'data-request.kind' => isset($meta['to'])
+                ? sprintf('Set the request type to %s', str_replace('-', ' ', (string) $meta['to']))
+                : 'Set the request type',
+            'data-request.approved' => 'Approved the data request',
+            'data-request.declined' => 'Declined the data request',
+            'case.categorised' => 'Updated the categories',
+            'case.escalated' => 'Escalated this',
+            default => ucfirst(str_replace(['.', '-'], ' ', $log->action)),
         };
     }
 

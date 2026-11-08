@@ -3,8 +3,11 @@
 		<LoadError :error="error" :retry="load" />
 		<cdx-progress-bar v-if="loading && !person" aria-label="Loading the profile" />
 
-		<template v-if="person">
-			<div class="ts-profile-card">
+		<div v-if="person" class="ts-profile-themed" :class="{ 'ts-profile-themed--glass': glass }" :style="themeStyle">
+			<div v-if="person.banner_url" class="ts-banner" :style="{ backgroundImage: `url( '${ person.banner_url }' )` }" role="img" :aria-label="`${ person.shown_name }'s banner`" />
+			<div v-else-if="glass" class="ts-banner ts-banner--empty" aria-hidden="true" />
+
+			<div class="ts-profile-card" :class="{ 'ts-profile-card--banner': person.banner_url || glass }">
 				<UserAvatar :name="person.username" :url="person.avatar_url" size="6rem" />
 
 				<div class="ts-profile-card__main">
@@ -31,7 +34,7 @@
 				<section aria-labelledby="bio-title">
 					<h2 id="bio-title" class="ts-section__title">About</h2>
 					<div class="ts-panel">
-						<p v-if="person.bio" class="ts-prose ts-profile-card__bio">{{ person.bio }}</p>
+						<RichText v-if="person.bio" :text="person.bio" class="ts-prose ts-profile-card__bio" />
 						<p v-else class="ts-meta">
 							{{ isMe ? 'You have not written a bio yet.' : `${ person.shown_name } has not written a bio.` }}
 							<a v-if="isMe" href="#" @click.prevent="ui.openSettings( 'profile' )">Add one</a>
@@ -59,7 +62,7 @@
 					</div>
 				</aside>
 			</div>
-		</template>
+		</div>
 	</main>
 </template>
 
@@ -68,7 +71,10 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { CdxButton, CdxIcon, CdxInfoChip, CdxProgressBar } from '@wikimedia/codex';
 import { cdxIconEdit } from '@wikimedia/codex-icons';
 import LoadError from '../components/LoadError.vue';
+import RichText from '../components/RichText.vue';
 import UserAvatar from '../components/UserAvatar.vue';
+import { gradientCss } from '../lib/gradient.js';
+import { isDark, themeRules } from '../lib/preferences.js';
 import { api } from '../lib/api.js';
 import { ago, date } from '../lib/format.js';
 import { session } from '../lib/session.js';
@@ -81,6 +87,33 @@ const loading = ref( false );
 const error = ref( null );
 
 const isMe = computed( () => person.value?.id === session.user.id );
+
+const glass = computed( () => !!person.value?.profile_theme?.gradient );
+
+const themeStyle = computed( () => {
+	const t = person.value?.profile_theme;
+
+	if ( !t ) {
+		return {};
+	}
+
+	const style = {};
+	const rules = t.accent
+		? themeRules( { accent: t.accent, background: t.gradient ? undefined : t.background }, isDark() )
+		: ( t.background ? themeRules( { accent: '#3366cc', background: t.background }, isDark() ) : {} );
+
+	for ( const [ key, value ] of Object.entries( rules ) ) {
+		style[ `--${ key }` ] = value;
+	}
+
+	if ( t.gradient ) {
+		style.background = gradientCss( t.gradient );
+	} else if ( t.background ) {
+		style.backgroundColor = t.background;
+	}
+
+	return style;
+} );
 
 async function load() {
 	loading.value = true;
@@ -95,7 +128,7 @@ async function load() {
 	}
 }
 
-watch( () => [ session.user.shown_name, session.user.bio, session.user.avatar_url ], () => {
+watch( () => [ session.user.shown_name, session.user.bio, session.user.avatar_url, session.user.banner_url, JSON.stringify( session.user.profile_theme ) ], () => {
 	if ( isMe.value ) {
 		load();
 	}

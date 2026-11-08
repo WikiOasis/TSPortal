@@ -1,5 +1,6 @@
 import { reactive, watch } from 'vue';
 import { api } from './api.js';
+import { cleanGradient, gradientCss } from './gradient.js';
 
 const KEY = 'tsportal:preferences';
 
@@ -87,7 +88,7 @@ const SURFACES = {
 
 const dark = window.matchMedia( '( prefers-color-scheme: dark )' );
 
-function isDark() {
+export function isDark() {
 	return preferences.theme === 'dark' || ( preferences.theme === 'system' && dark.matches );
 }
 
@@ -102,9 +103,9 @@ function activeTheme() {
 	return allThemes().find( ( t ) => t.id === preferences.palette ) ?? null;
 }
 
-export function themeCss( theme, night ) {
+export function themeRules( theme, night ) {
 	if ( !theme ) {
-		return '';
+		return {};
 	}
 
 	const { accent, background } = theme;
@@ -143,7 +144,15 @@ export function themeCss( theme, night ) {
 		}
 	}
 
-	return `:root:root:root { ${ Object.entries( rules ).map( ( [ k, v ] ) => `--${ k }: ${ v };` ).join( ' ' ) } }`;
+	return rules;
+}
+
+export function themeCss( theme, night ) {
+	const rules = themeRules( theme, night );
+
+	return Object.keys( rules ).length
+		? `:root:root:root { ${ Object.entries( rules ).map( ( [ k, v ] ) => `--${ k }: ${ v };` ).join( ' ' ) } }`
+		: '';
 }
 
 function style( id ) {
@@ -170,10 +179,12 @@ export function applyPreferences() {
 	const theme = activeTheme();
 	style( 'ts-user-theme' ).textContent = themeCss( theme, isDark() );
 
-	if ( theme?.image ) {
+	const layers = [ theme?.image ? `url( "${ theme.image }" )` : '', gradientCss( theme?.gradient ) ].filter( Boolean );
+
+	if ( layers.length ) {
 		root.dataset.bgImage = '';
-		root.style.setProperty( '--ts-bg-image', `url( "${ theme.image }" )` );
-		root.style.setProperty( '--ts-bg-opacity', String( 1 - Number( theme.dim ?? 40 ) / 100 ) );
+		root.style.setProperty( '--ts-bg-image', layers.join( ', ' ) );
+		root.style.setProperty( '--ts-bg-opacity', String( 1 - Number( theme.dim ?? ( theme.image ? 40 : 15 ) ) / 100 ) );
 	} else {
 		delete root.dataset.bgImage;
 		root.style.removeProperty( '--ts-bg-image' );
@@ -191,8 +202,8 @@ export function newThemeId() {
 }
 
 export function exportTheme( theme ) {
-	const { name, accent, tint, background } = theme;
-	return JSON.stringify( { name, accent, tint, background } );
+	const { name, accent, tint, background, gradient } = theme;
+	return JSON.stringify( { name, accent, tint, background, gradient } );
 }
 
 export function parseTheme( text ) {
@@ -205,12 +216,15 @@ export function parseTheme( text ) {
 		throw new Error( 'The background colour in that theme is not valid.' );
 	}
 
+	const gradient = data.gradient ? cleanGradient( data.gradient ) : null;
+
 	return {
 		id: newThemeId(),
 		name: String( data.name ?? 'Imported theme' ).slice( 0, 40 ),
 		accent: data.accent,
 		tint: Math.max( 0, Math.min( 16, Number( data.tint ?? 0 ) ) ),
-		...( data.background ? { background: data.background } : {} )
+		...( data.background ? { background: data.background } : {} ),
+		...( gradient ? { gradient, dim: 15 } : {} )
 	};
 }
 

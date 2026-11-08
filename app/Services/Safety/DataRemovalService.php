@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Safety;
 
 use App\Models\Attachment;
+use App\Models\CaseComment;
 use App\Models\DataRemoval;
 use App\Models\Investigation;
 use App\Models\SafetyCase;
@@ -400,12 +401,12 @@ final class DataRemovalService
 
         $case = $removal->safetyCase;
         if ($case !== null && $case->isOpen()) {
-            app(CaseService::class)->setStatus(
-                $case,
-                SafetyCase::STATUS_ACTION_TAKEN,
-                $removal->approver,
-                'The data has been removed.',
-            );
+            Audit::asSystem(function () use ($case) {
+                $cases = app(CaseService::class);
+
+                $cases->setStatus($case, SafetyCase::STATUS_ACTION_TAKEN, null, 'The data has been removed.');
+                $cases->comment($case, 'The erasure was finished.', CaseComment::VISIBILITY_INTERNAL);
+            });
         }
 
         return $removal;

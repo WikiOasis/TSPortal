@@ -37,7 +37,7 @@ class User extends Authenticatable
         'bio',
     ];
 
-    protected $hidden = ['remember_token', 'avatar_path'];
+    protected $hidden = ['remember_token', 'avatar_path', 'banner_path'];
 
     protected $attributes = [
         'active' => true,
@@ -54,6 +54,7 @@ class User extends Authenticatable
             'active' => 'boolean',
             'last_login_at' => 'datetime',
             'preferences' => 'array',
+            'profile_theme' => 'array',
         ];
     }
 
@@ -67,6 +68,13 @@ class User extends Authenticatable
         return $this->avatar_path === null
             ? null
             : sprintf('/api/portal/avatars/%d?v=%s', $this->id, $this->avatar_version);
+    }
+
+    public function bannerUrl(): ?string
+    {
+        return $this->banner_path === null
+            ? null
+            : sprintf('/api/portal/banners/%d?v=%s', $this->id, $this->banner_version);
     }
 
     public function notificationSettings(): array

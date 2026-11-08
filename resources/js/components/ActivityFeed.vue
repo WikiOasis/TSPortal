@@ -28,7 +28,10 @@
 						</span>
 						<div class="ts-feed__event-main">
 							<div class="ts-feed__event-line">
-								<strong v-if="ev.actor && !( ev.kind === 'status-note' && i > 0 )" class="ts-feed__actor">{{ actorOf( ev ) }}</strong>
+								<template v-if="ev.actor && !( ev.kind === 'status-note' && i > 0 )">
+									<UserAvatar v-if="showAvatar( ev )" class="ts-feed__avatar" :name="actorOf( ev )" :url="ev.actor_avatar" size="1.25rem" />
+									<strong class="ts-feed__actor">{{ actorOf( ev ) }}</strong>
+								</template>
 								<span>{{ sentence( ev ) }}</span>
 								<router-link v-if="link( ev )" :to="link( ev )" class="ts-mono">
 									{{ ev.meta.reference || 'open' }}
@@ -72,7 +75,14 @@
 						{ 'ts-msg--flash': flashed !== null && flashed === idOf( group.message ) }
 					]"
 				>
-					<span class="ts-msg__avatar" :style="{ '--hue': hue( actorOf( group.message ) ) }" aria-hidden="true">
+					<UserAvatar
+						v-if="showAvatar( group.message ) && group.message.actor_avatar"
+						class="ts-msg__avatar ts-msg__avatar--picture"
+						:name="actorOf( group.message )"
+						:url="group.message.actor_avatar"
+						size="2.25rem"
+					/>
+					<span v-else class="ts-msg__avatar" :style="{ '--hue': hue( actorOf( group.message ) ) }" aria-hidden="true">
 						{{ initials( actorOf( group.message ) ) }}
 					</span>
 
@@ -153,6 +163,7 @@ import {
 } from '@wikimedia/codex-icons';
 import StatusChip from './StatusChip.vue';
 import RichText from './RichText.vue';
+import UserAvatar from './UserAvatar.vue';
 import ReplyComposer from './ReplyComposer.vue';
 import { plain } from '../lib/markdown.js';
 import { ago, dateTime, TIMELINE_KINDS } from '../lib/format.js';
@@ -183,6 +194,8 @@ const MESSAGES = {
 };
 const isMessage = ( e ) => MESSAGES[ props.kind ].includes( e.kind );
 const idOf = ( e ) => e.comment_id ?? e.note_id ?? null;
+
+const showAvatar = ( e ) => !publicOnly.value && ( e.actor_avatar || ( e.actor_id && e.actor !== 'System' ) );
 
 const actorOf = ( e ) => ( publicOnly.value && e.public_actor ) ? e.public_actor : e.actor;
 

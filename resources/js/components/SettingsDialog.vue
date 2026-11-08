@@ -16,7 +16,6 @@
 						<div class="ts-profile__text">
 							<strong>{{ session.user.username }}</strong>
 							<span v-if="session.user.real_name" class="ts-meta">{{ session.user.real_name }}</span>
-							<span class="ts-meta">Shown to other staff in the portal. Reporters never see it.</span>
 						</div>
 						<div class="ts-profile__actions">
 							<cdx-button :disabled="uploading" @click="picker.click()">
@@ -26,12 +25,27 @@
 							<cdx-button v-if="session.user.avatar_url" weight="quiet" action="destructive" @click="removePicture">
 								Remove
 							</cdx-button>
-							<input ref="picker" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden @change="onPick">
+							<input ref="picker" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden @change="( e ) => pickForCrop( e, 'avatar' )">
 						</div>
 					</div>
 
-					<p class="ts-meta">PNG, JPEG, WebP or GIF, up to 2 MB. It is cropped to a circle.</p>
+					<p class="ts-meta">PNG, JPEG, WebP or GIF.</p>
 					<cdx-message v-if="uploadError" type="error" :inline="true" :allow-user-dismiss="false">{{ uploadError }}</cdx-message>
+
+					<cdx-field>
+						<template #label>Profile banner</template>
+						<div class="ts-banner-edit">
+							<span class="ts-banner-edit__preview" :style="session.user.banner_url ? { backgroundImage: `url( '${ session.user.banner_url }' )` } : {}" />
+							<div class="ts-inline">
+								<cdx-button :disabled="uploadingBanner" @click="bannerPicker.click()">
+									<cdx-icon :icon="cdxIconUpload" size="small" />
+									{{ uploadingBanner ? 'Uploading…' : ( session.user.banner_url ? 'Replace banner' : 'Add a banner' ) }}
+								</cdx-button>
+								<cdx-button v-if="session.user.banner_url" weight="quiet" action="destructive" @click="removeBanner">Remove</cdx-button>
+							</div>
+							<input ref="bannerPicker" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden @change="( e ) => pickForCrop( e, 'banner' )">
+						</div>
+					</cdx-field>
 
 					<cdx-field>
 						<template #label>Display name</template>
@@ -43,9 +57,33 @@
 
 					<cdx-field>
 						<template #label>Bio</template>
-						<template #description>Shown on your profile page. Plain text, {{ profile.bio.length }} of 1000.</template>
-						<cdx-text-area v-model="profile.bio" rows="4" maxlength="1000" placeholder="What you work on, languages you cover, when you are around." />
+						<MarkdownEditor v-model="profile.bio" :rows="5" label="Bio" placeholder="What you work on, languages you cover, when you are around." />
 					</cdx-field>
+
+					<section class="ts-ptheme">
+						<h3 class="ts-settings__subtitle">Profile theme</h3>
+
+						<cdx-field>
+							<template #label>Accent colour</template>
+							<div class="ts-colour">
+								<cdx-toggle-switch v-model="ptheme.hasAccent" aria-label="Use a custom accent on my profile">Custom accent</cdx-toggle-switch>
+								<ColourPicker v-if="ptheme.hasAccent" v-model="ptheme.accent" label="Profile accent" />
+							</div>
+						</cdx-field>
+
+						<cdx-field>
+							<template #label>Background</template>
+							<cdx-toggle-button-group v-model="ptheme.kind" :buttons="kinds" />
+							<div v-if="ptheme.kind === 'solid'" class="ts-ptheme__body">
+								<ColourPicker v-model="ptheme.background" label="Profile background" />
+							</div>
+							<div v-else-if="ptheme.kind === 'gradient'" class="ts-ptheme__body">
+								<GradientEditor v-model="ptheme.gradient" />
+							</div>
+						</cdx-field>
+
+						<div v-if="ptheme.kind !== 'none' || ptheme.hasAccent" class="ts-ptheme__preview" :style="profilePreview" />
+					</section>
 
 					<div class="ts-settings__actions ts-settings__actions--start">
 						<cdx-button action="progressive" weight="primary" :disabled="!profileDirty || savingProfile" @click="saveProfile">
@@ -192,8 +230,7 @@
 							<template #label>Accent colour</template>
 							<template #description>Buttons, links, selected items and focus rings.</template>
 							<div class="ts-colour">
-								<input v-model="draft.accent" type="color" aria-label="Accent colour">
-								<cdx-text-input v-model="accentHex" aria-label="Accent colour as hex" placeholder="#7c5cff" />
+								<ColourPicker v-model="draft.accent" label="Accent colour" />
 							</div>
 						</cdx-field>
 
@@ -202,7 +239,7 @@
 							<template #description>Optional. Leave it off to keep the normal light or dark surfaces, with the tint below.</template>
 							<div class="ts-colour">
 								<cdx-toggle-switch v-model="draft.hasBackground" aria-label="Use a custom background">Custom background</cdx-toggle-switch>
-								<input v-if="draft.hasBackground" v-model="draft.background" type="color" aria-label="Background colour">
+								<ColourPicker v-if="draft.hasBackground" v-model="draft.background" label="Background colour" />
 							</div>
 						</cdx-field>
 
@@ -228,13 +265,20 @@
 							<cdx-message v-if="bgError" type="error" :inline="true" :allow-user-dismiss="false">{{ bgError }}</cdx-message>
 						</cdx-field>
 
-						<cdx-field v-if="draft.image">
-							<template #label>Image dimming · {{ draft.dim }}%</template>
-							<template #description>Fades the picture into the background colour so text stays readable.</template>
-							<input v-model.number="draft.dim" class="ts-settings__range" type="range" min="0" max="90" step="5" aria-label="Image dimming">
+						<cdx-field>
+							<template #label>Gradient background</template>
+							<cdx-toggle-switch v-model="draft.hasGradient" aria-label="Use a gradient background">Gradient</cdx-toggle-switch>
+							<div v-if="draft.hasGradient" class="ts-ptheme__body">
+								<GradientEditor v-model="draft.gradient" />
+							</div>
 						</cdx-field>
 
-						<div class="ts-theme__live" :style="previewStyle( draft )">
+						<cdx-field v-if="draft.image || draft.hasGradient">
+							<template #label>Fade · {{ draft.dim }}%</template>
+							<input v-model.number="draft.dim" class="ts-settings__range" type="range" min="0" max="90" step="5" aria-label="Fade">
+						</cdx-field>
+
+						<div class="ts-theme__live" :style="previewStyle( draftTheme )">
 							<span>Preview</span>
 							<i /><i />
 						</div>
@@ -281,6 +325,16 @@
 				</div>
 			</cdx-tab>
 		</cdx-tabs>
+
+		<ImageCropper
+			v-model:open="cropOpen"
+			:file="cropFile"
+			:aspect="cropTarget === 'banner' ? 3 : 1"
+			:round="cropTarget === 'avatar'"
+			:output-width="cropTarget === 'banner' ? 1200 : 512"
+			:title="cropTarget === 'banner' ? 'Crop your banner' : 'Crop your picture'"
+			@cropped="onCropped"
+		/>
 	</cdx-dialog>
 </template>
 
@@ -295,6 +349,12 @@ import {
 } from '@wikimedia/codex-icons';
 import { useRouter } from 'vue-router';
 import UserAvatar from './UserAvatar.vue';
+import ColourPicker from './ColourPicker.vue';
+import GradientEditor from './GradientEditor.vue';
+import ImageCropper from './ImageCropper.vue';
+import MarkdownEditor from './MarkdownEditor.vue';
+import { cleanGradient, gradientCss, newGradient } from '../lib/gradient.js';
+import { shrink } from '../lib/image.js';
 import { api } from '../lib/api.js';
 import {
 	allThemes, AUTO_SUBSCRIBE, exportTheme, newThemeId, NOTIFY_EVENTS, parseTheme,
@@ -344,17 +404,53 @@ watch( () => [ session.user.display_name, session.user.bio ], ( [ name, bio ] ) 
 	profile.bio = bio ?? '';
 } );
 
+const kinds = [ { value: 'none', label: 'None' }, { value: 'solid', label: 'Solid' }, { value: 'gradient', label: 'Gradient' } ];
+
+function themeState( saved ) {
+	return {
+		hasAccent: !!saved?.accent,
+		accent: saved?.accent ?? '#7c5cff',
+		kind: saved?.gradient ? 'gradient' : ( saved?.background ? 'solid' : 'none' ),
+		background: saved?.background ?? '#1a1626',
+		gradient: saved?.gradient ? { stops: [ ...saved.gradient.stops ], angle: saved.gradient.angle ?? 135 } : newGradient()
+	};
+}
+
+const ptheme = reactive( themeState( session.user.profile_theme ) );
+
+function themePayload() {
+	const out = {};
+
+	if ( ptheme.hasAccent ) {
+		out.accent = ptheme.accent;
+	}
+	if ( ptheme.kind === 'solid' ) {
+		out.background = ptheme.background;
+	} else if ( ptheme.kind === 'gradient' ) {
+		out.gradient = cleanGradient( ptheme.gradient );
+	}
+
+	return Object.keys( out ).length ? out : null;
+}
+
+const profilePreview = computed( () => ( {
+	'--ts-prev-accent': ptheme.hasAccent ? ptheme.accent : '#3366cc',
+	background: ptheme.kind === 'gradient' ? gradientCss( ptheme.gradient ) : ( ptheme.kind === 'solid' ? ptheme.background : undefined )
+} ) );
+
 const profileDirty = computed( () => profile.display_name !== ( session.user.display_name ?? '' )
-	|| profile.bio !== ( session.user.bio ?? '' ) );
+	|| profile.bio !== ( session.user.bio ?? '' )
+	|| JSON.stringify( themePayload() ) !== JSON.stringify( session.user.profile_theme ?? null ) );
 
 async function saveProfile() {
 	savingProfile.value = true;
 
 	try {
-		const saved = await api.saveProfile( { display_name: profile.display_name, bio: profile.bio } );
+		const saved = await api.saveProfile( { display_name: profile.display_name, bio: profile.bio, theme: themePayload() } );
 		session.user.display_name = saved.display_name;
 		session.user.bio = saved.bio;
 		session.user.shown_name = saved.shown_name;
+		session.user.profile_theme = saved.profile_theme;
 		notify( 'Profile saved.' );
 	} catch ( e ) {
 		notify( e.message, 'error' );
@@ -367,7 +463,13 @@ const picker = ref( null );
 const uploading = ref( false );
 const uploadError = ref( '' );
 
-async function onPick( event ) {
+const bannerPicker = ref( null );
+const uploadingBanner = ref( false );
+const cropOpen = ref( false );
+const cropFile = ref( null );
+const cropTarget = ref( 'avatar' );
+
+function pickForCrop( event, target ) {
 	const file = event.target.files?.[ 0 ];
 	event.target.value = '';
 
@@ -375,16 +477,36 @@ async function onPick( event ) {
 		return;
 	}
 
-	uploading.value = true;
+	uploadError.value = '';
+	cropTarget.value = target;
+	cropFile.value = file;
+	cropOpen.value = true;
+}
+
+async function onCropped( file ) {
+	const banner = cropTarget.value === 'banner';
+	( banner ? uploadingBanner : uploading ).value = true;
 	uploadError.value = '';
 
 	try {
-		const response = await api.uploadAvatar( file );
-		session.user.avatar_url = response.avatar_url;
+		if ( banner ) {
+			session.user.banner_url = ( await api.uploadBanner( file ) ).banner_url;
+		} else {
+			session.user.avatar_url = ( await api.uploadAvatar( file ) ).avatar_url;
+		}
 	} catch ( e ) {
 		uploadError.value = e.message;
 	} finally {
-		uploading.value = false;
+		( banner ? uploadingBanner : uploading ).value = false;
+	}
+}
+
+async function removeBanner() {
+	try {
+		await api.removeBanner();
+		session.user.banner_url = null;
+	} catch ( e ) {
+		notify( e.message, 'error' );
 	}
 }
 
@@ -403,7 +525,7 @@ const importing = ref( false );
 const shared = ref( '' );
 const importError = ref( '' );
 
-const draft = reactive( { id: '', name: '', accent: '#7c5cff', tint: 6, hasBackground: false, background: '#1a1626', image: '', dim: 40 } );
+const draft = reactive( { id: '', name: '', accent: '#7c5cff', tint: 6, hasBackground: false, background: '#1a1626', image: '', dim: 40, hasGradient: false, gradient: newGradient() } );
 
 const bgPicker = ref( null );
 const uploadingBg = ref( false );
@@ -424,7 +546,7 @@ async function onPickBg( event ) {
 	bgError.value = '';
 
 	try {
-		const { url } = await api.uploadBackground( file );
+		const { url } = await api.uploadBackground( await shrink( file ) );
 		if ( draft.image && draft.image !== originalImage ) {
 			api.removeBackground( fileName( draft.image ) ).catch( () => {} );
 		}
@@ -467,7 +589,8 @@ function previewStyle( t ) {
 	return {
 		'--ts-prev-accent': t.accent ?? '#3366cc',
 		'--ts-prev-surface': surface,
-		'--ts-prev-image': t.image ? `url( '${ t.image }' )` : 'none'
+		'--ts-prev-opacity': String( 1 - Number( t.dim ?? ( t.image ? 40 : 15 ) ) / 100 ),
+		'--ts-prev-image': [ t.image ? `url( '${ t.image }' )` : '', gradientCss( t.gradient ) ].filter( Boolean ).join( ', ' ) || 'none'
 	};
 }
 
@@ -480,7 +603,9 @@ function beginEdit( t, fresh ) {
 		hasBackground: !!t.background,
 		background: t.background ?? '#1a1626',
 		image: fresh ? '' : ( t.image ?? '' ),
-		dim: Number( t.dim ?? 40 )
+		dim: Number( t.dim ?? ( t.image ? 40 : 15 ) ),
+		hasGradient: !!t.gradient,
+		gradient: t.gradient ? { stops: [ ...t.gradient.stops ], angle: t.gradient.angle ?? 135 } : newGradient()
 	} );
 	originalImage = draft.image;
 	staleImages.length = 0;
@@ -493,6 +618,15 @@ const startNew = () => beginEdit( {}, true );
 const edit = ( t ) => beginEdit( t, false );
 const customise = ( t ) => beginEdit( { ...t, name: '' }, true );
 
+const draftTheme = computed( () => ( {
+	accent: draft.accent,
+	tint: draft.hasBackground ? 0 : Number( draft.tint ),
+	...( draft.hasBackground ? { background: draft.background } : {} ),
+	...( draft.image ? { image: draft.image } : {} ),
+	...( draft.hasGradient ? { gradient: cleanGradient( draft.gradient ) } : {} ),
+	dim: Number( draft.dim )
+} ) );
+
 function saveDraft() {
 	const theme = {
 		id: draft.id,
@@ -500,8 +634,13 @@ function saveDraft() {
 		accent: draft.accent,
 		tint: draft.hasBackground ? 0 : Number( draft.tint ),
 		...( draft.hasBackground ? { background: draft.background } : {} ),
-		...( draft.image ? { image: draft.image, dim: Number( draft.dim ) } : {} )
+		...( draft.image ? { image: draft.image } : {} ),
+		...( draft.hasGradient ? { gradient: cleanGradient( draft.gradient ) } : {} ),
+		...( draft.image || draft.hasGradient ? { dim: Number( draft.dim ) } : {} )
 	};
+	if ( theme.gradient === null ) {
+		delete theme.gradient;
+	}
 	const at = preferences.themes.findIndex( ( t ) => t.id === theme.id );
 
 	if ( at === -1 ) {

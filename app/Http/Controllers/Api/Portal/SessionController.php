@@ -26,6 +26,8 @@ class SessionController extends Controller
                 'avatar_url' => $user->avatarUrl(),
                 'display_name' => $user->display_name,
                 'bio' => $user->bio,
+                'banner_url' => $user->bannerUrl(),
+                'profile_theme' => $user->profile_theme,
                 'shown_name' => $user->shownName(),
                 'preferences' => $user->preferences,
                 'notify' => $user->notificationSettings(),

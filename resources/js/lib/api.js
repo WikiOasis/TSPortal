@@ -66,6 +66,9 @@ async function upload( path, file ) {
 	}
 
 	if ( !response.ok ) {
+		if ( response.status === 413 ) {
+			payload = { message: 'That picture is too large for the server to accept. Try a smaller one.' };
+		}
 		throw new ApiError( response.status, payload?.errors?.file ? { ...payload, message: payload.errors.file[ 0 ] } : payload );
 	}
 
@@ -92,6 +95,12 @@ export const api = {
 	uploadBackground: ( file ) => upload( '/portal/me/backgrounds', file ),
 	removeBackground: ( name ) => request( 'DELETE', `/portal/me/backgrounds/${ name }` ),
 	removeAvatar: () => request( 'DELETE', '/portal/me/avatar' ),
+	uploadBanner: ( file ) => upload( '/portal/me/banner', file ),
+	removeBanner: () => request( 'DELETE', '/portal/me/banner' ),
+	catchUp: ( params ) => request( 'GET', `/portal/catch-up${ query( params ) }` ),
+	markRead: ( id ) => request( 'PUT', `/portal/catch-up/${ id }`, {} ),
+	markUnread: ( id ) => request( 'DELETE', `/portal/catch-up/${ id }` ),
+	markAllRead: () => request( 'POST', '/portal/catch-up/read', {} ),
 	notifications: () => request( 'GET', '/portal/notifications' ),
 	readNotification: ( id ) => request( 'POST', `/portal/notifications/${ id }/read`, {} ),
 	readAllNotifications: () => request( 'POST', '/portal/notifications/read', {} ),
