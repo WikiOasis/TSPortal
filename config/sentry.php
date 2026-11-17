@@ -1,12 +1,5 @@
 <?php
 
-/**
- * Sentry Laravel SDK configuration.
- *
- * Sentry stays disabled (no events sent) until SENTRY_LARAVEL_DSN is set.
- *
- * @see https://docs.sentry.io/platforms/php/guides/laravel/configuration/options/
- */
 return [
     'dsn' => env('SENTRY_LARAVEL_DSN', env('SENTRY_DSN')),
 
@@ -14,15 +7,12 @@ return [
 
     'environment' => env('SENTRY_ENVIRONMENT', env('APP_ENV')),
 
-    // Send structured logs to Sentry (via the `sentry_logs` log channel).
     'enable_logs' => env('SENTRY_ENABLE_LOGS', true),
 
     'logs_channel_level' => env('SENTRY_LOG_LEVEL', 'debug'),
 
-    // Capture user IP, cookies and request headers/body where applicable.
     'send_default_pii' => env('SENTRY_SEND_DEFAULT_PII', false),
 
-    // Performance monitoring (tracing). Lower in high-traffic environments.
     'traces_sample_rate' => env('SENTRY_TRACES_SAMPLE_RATE') === null
         ? null
         : (float) env('SENTRY_TRACES_SAMPLE_RATE'),
