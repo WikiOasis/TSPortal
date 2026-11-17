@@ -17,10 +17,6 @@ return [
             'channels' => explode(',', (string) env('LOG_STACK', 'single,sentry_logs')),
             'ignore_exceptions' => false,
         ],
-        'sentry_logs' => [
-            'driver' => 'sentry_logs',
-            'level' => env('LOG_LEVEL', 'debug'),
-        ],
         'single' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),

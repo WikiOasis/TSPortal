@@ -1,5 +1,7 @@
 <?php
 
+use App\Sentry\DropLog;
+
 return [
     'dsn' => env('SENTRY_LARAVEL_DSN', env('SENTRY_DSN')),
 
@@ -7,7 +9,9 @@ return [
 
     'environment' => env('SENTRY_ENVIRONMENT', env('APP_ENV')),
 
-    'enable_logs' => env('SENTRY_ENABLE_LOGS', true),
+    'enable_logs' => true,
+
+    'before_send_log' => env('SENTRY_ENABLE_LOGS', true) ? null : [DropLog::class, 'handle'],
 
     'logs_channel_level' => env('SENTRY_LOG_LEVEL', 'debug'),
 
