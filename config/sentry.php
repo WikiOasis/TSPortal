@@ -36,7 +36,7 @@ return [
     'tracing' => [
         'views' => true,
         'sql_queries' => true,
-        'sql_bindings' => true,
+        'sql_bindings' => env('SENTRY_TRACE_SQL_BINDINGS', false),
         'sql_origin' => true,
         'queue_job_transactions' => env('SENTRY_TRACE_QUEUE_ENABLED', true),
         'queue_jobs' => true,
