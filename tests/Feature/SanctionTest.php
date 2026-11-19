@@ -176,6 +176,22 @@ class SanctionTest extends TestCase
     }
 
     #[Test]
+    public function an_expired_action_with_no_account_still_expires(): void
+    {
+        $sanction = app(SanctionService::class)->issue(
+            Subject::forUsername('Halcyon Reed', 42),
+            ['type' => Sanction::TYPE_WARNING, 'reason' => 'A warning.'],
+            $this->staff(),
+            $this->file(),
+        );
+
+        $sanction->forceFill(['subject_id' => null, 'expires_at' => now()->subHour()])->save();
+
+        $this->assertSame(1, app(SanctionService::class)->expireDue());
+        $this->assertFalse($sanction->fresh()->active);
+    }
+
+    #[Test]
     public function an_action_taken_on_a_case_tells_the_reporter(): void
     {
         $reporter = Subject::forUsername('Halcyon Reed', 42);

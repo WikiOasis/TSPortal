@@ -243,12 +243,15 @@ final class SanctionService
 
         foreach ($due as $sanction) {
             $sanction->forceFill(['active' => false])->save();
-            $sanction->subject->refreshStanding();
+            $sanction->subject?->refreshStanding();
 
             Audit::log('sanction.expired', $sanction, [], actorLabel: 'scheduler');
 
             $this->sync->pushSanction($sanction);
-            $this->sync->pushStanding($sanction->subject);
+
+            if ($sanction->subject !== null) {
+                $this->sync->pushStanding($sanction->subject);
+            }
 
             if ($sanction->type === Sanction::TYPE_LOCK) {
                 $this->enforce($sanction, unlock: true);
